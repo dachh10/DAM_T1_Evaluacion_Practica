@@ -1,0 +1,55 @@
+schema: spec-driven
+
+context: |
+  Android native app (Kotlin + Jetpack Compose + Material 3) for operational safety inspections
+  (logistics, construction, industrial maintenance). Single :app module. Kotlin 2.2.10, AGP 9.4.1,
+  Gradle 9.6.0, KSP, Room 2.6.1 (KSP), Play Services Maps/Location. MVVM: InspectionViewModel holds
+  business rules (Critical Stop on HIGH criticality non-compliance; weighted score HIGH=5/MEDIUM=3/LOW=1;
+  <85% shows reinspección 24h alert in UI; reschedule scheduling NOT implemented yet).
+  Domain models: Normativ, ChecklistItem (CriticalityLevel), Incidence (OPEN/IN_MITIGATION/CLOSED + GPS).
+  Git: project has NO own .git; lives inside home repo C:/Users/diego (remote Machina). Do not init git
+  or commit. Conventions: package-by-layer (ui/data/domain), Spanish UI copy, English identifiers.
+
+projects:
+  - path: .
+    stack: android-kotlin-compose
+    test_command: ./gradlew test
+    framework: JUnit4 unit / androidx.test + Compose ui-test instrumented
+    test_layers:
+      unit: true
+      integration: false
+      e2e: false
+    coverage_command: ""
+    lint: ./gradlew :app:lint
+    typechecker: kotlinc (compile)
+    formatter: ""
+
+testing:
+  strict_tdd: true
+  unit_command: ./gradlew test
+  instrumented_command: ./gradlew :app:connectedDebugAndroidTest
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing code patterns
+      - Business rules live in the ViewModel layer (do not move to UI composables)
+    tdd: true
+    test_command: ./gradlew test
+  verify:
+    test_command: ./gradlew test
+    build_command: ./gradlew :app:assembleDebug
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
