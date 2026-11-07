@@ -93,3 +93,65 @@ Room/KSP step. BoM `34.12.0` is the highest release still mapping `firebase-auth
 | APK | `app/build/outputs/apk/debug/app-debug.apk`, 34,515,245 bytes, 2026-11-06 19:03 - a fresh artifact, replacing the stale 20/09/2026 one. |
 
 Nothing remains unproven for S0.
+
+---
+
+# Apply Progress: Slice 2 (S1a) — Domain Contracts
+
+Change: `firebase-cloud-persistence` · Store: `openspec` · Slice 2a of 12 (PR 2 in the forecast) · Mode: Standard
+Status: **COMPLETE** — S1-1, S1-2, S1-3 done. Purely additive; no existing behavior changed and the 42-test gate is untouched.
+
+## Slice boundary
+
+Start: `abba82c` (`build(s0): add Firebase, Cloudinary and WorkManager toolchain`), branch
+`feature/firebase-cloud-persistence`. End: domain models, domain errors and repository interfaces
+exist; `:app:assembleDebug` and `:app:testDebugUnitTest` green. Room v3, mappers, the repository impl
+and all wiring stay in S1b (S1-4..S1-7).
+
+## What changed
+
+| File | Action | What was done |
+|---|---|---|
+| `main/domain/model/SyncState.kt` | Created | `LOCAL_ONLY`, `PENDING`, `SYNCED`, `FAILED`. |
+| `main/domain/model/AuthSession.kt` | Created | `AuthSession(uid, email)`. |
+| `main/domain/model/Evidence.kt` | Created | `EvidenceStatus` (`PENDING`, `UPLOADING`, `UPLOADED`, `FAILED`) and `Evidence(evidenceId, inspectionId, itemId, localRef, remoteUrl, status, attempts, lastError)`. |
+| `main/domain/model/InspectionSession.kt` | Modified | `InspectionSessionRecord` gains `inspectionId`, `ownerUid`, `syncState`, `updatedAt`. |
+| `main/domain/model/Incidence.kt` | Modified | `Incidence` gains `inspectionId`. |
+| `main/domain/model/User.kt` | Modified | `uid: String = ""` appended. |
+| `main/domain/error/AuthError.kt` | Created | `INVALID_CREDENTIALS`, `EMAIL_ALREADY_IN_USE`, `WEAK_PASSWORD`, `NETWORK_UNAVAILABLE`, `UNKNOWN`. |
+| `main/domain/error/AuthException.kt` | Created | `class AuthException(val error: AuthError) : Exception(error.name)`. |
+| `main/domain/error/SyncError.kt` | Created | `NETWORK`, `PERMISSION_DENIED`, `NOT_FOUND`, `INVALID_DATA`, `EXHAUSTED`, `UNKNOWN`. |
+| `main/domain/error/EvidenceError.kt` | Created | `NETWORK`, `REJECTED`, `TOO_LARGE`, `STORAGE_IO`, `EXHAUSTED`, `UNKNOWN`. |
+| `main/domain/repository/InspectionRepository.kt` | Created | Interface with the full design §2 surface (queries, saves, auth lookups, delete/retry tombstone, evidence subset). |
+| `main/domain/repository/AuthRepository.kt` | Created | `session`, `signIn`, `register`, `signOut`, `observeProfile`, `cachedProfile`. |
+| `main/domain/repository/EvidenceRepository.kt` | Created | `observe`, `register`, `retry`. |
+
+## Deviations from design (§2 is authoritative)
+
+1. **`inspectionId` carries a `""` default** in `InspectionSessionRecord` and `Incidence`. Design §7
+   declares it without a default, but its only construction sites are `data/mapper/*` and
+   `ui/viewmodel/InspectionViewModel.kt`, which are S1b files. A required field would break
+   `compileDebugKotlin` in this slice. Defaults keep the change additive; S1b supplies the real UUID.
+2. **`Evidence` fields are not enumerated by design §2.** The shape uses only identifiers design names
+   elsewhere: `evidenceId`/`inspectionId`/`itemId` (design §8 deterministic id, public-id convention),
+   `localRef` (`register(..., localRef)`), `remoteUrl` (design §8 "reference of record"), and
+   `status`/`attempts`/`lastError` (design §6). `lastError` is typed `EvidenceError?`; only its `name`
+   is persisted. No `updatedAt` column was invented — S1b/EVID may add one.
+3. **No new tests in this slice.** `strict_tdd: true` is configured, but the assigned work is pure
+   declaration (data classes, enums, interfaces) with no behavioral seam, and the slice boundary
+   forbids `app/src/test/`. The RED/GREEN cycle applies from AUTH-1 onward where logic exists. The
+   compile plus the unchanged 42-test suite is the verification for this unit.
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `:app:testDebugUnitTest` -> BUILD SUCCESSFUL; XML totals from `app/build/test-results/testDebugUnitTest/*.xml`: **42 tests, 0 failures, 0 errors, 0 skipped** (2 suites: `ExampleUnitTest` 1, `InspectionViewModelTest` 41). |
+| Runtime harness command and exact result | `:app:assembleDebug` -> **BUILD SUCCESSFUL in 30s**, 7 executed / 33 up-to-date, `Configuration cache entry reused.` Kotlin compiled the new contracts; only pre-existing deprecation warnings. |
+| Rollback boundary | Revert the six created and three modified files under `domain/`; `tasks.md` and this artifact revert with them. Nothing outside `domain/` references the new declarations yet, so rollback removes no unrelated work. |
+
+## Remaining in PR 2
+
+S1-4 (Room v3), S1-5 (mappers), S1-6 (impl rename + wiring) and S1-7 (42-test regression gate) are not
+part of this batch. The 42-test gate currently still imports `data.repository.InspectionRepository`;
+that single-line move belongs to S1-7.

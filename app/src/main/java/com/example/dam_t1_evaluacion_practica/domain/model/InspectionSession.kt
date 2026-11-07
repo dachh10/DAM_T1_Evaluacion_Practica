@@ -43,6 +43,9 @@ data class SessionFinding(
  */
 data class InspectionSessionRecord(
     val folio: String,
+    // Cloud identity; the mapper supplies the real value. The default keeps the
+    // pre-existing construction sites compiling until the local mapper is updated.
+    val inspectionId: String = "",
     val userEmail: String = "",
     val companyName: String,
     val zoneName: String,
@@ -59,5 +62,8 @@ data class InspectionSessionRecord(
     val normCodes: List<String>,
     val latitude: Double? = null,
     val longitude: Double? = null,
-    val status: IncidenceStatus = IncidenceStatus.OPEN
+    val status: IncidenceStatus = IncidenceStatus.OPEN,
+    val ownerUid: String = "",
+    val syncState: SyncState = SyncState.LOCAL_ONLY,
+    val updatedAt: Long = timestamp
 )

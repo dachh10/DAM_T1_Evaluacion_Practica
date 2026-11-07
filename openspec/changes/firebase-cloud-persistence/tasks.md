@@ -25,9 +25,9 @@ Change: `firebase-cloud-persistence` · Store: `openspec` · Strict TDD · Revie
 
 ## Phase S1 — Domain contracts, Room v3, repository interface extraction
 
-- [ ] S1-1 Create `main/domain/model/Evidence.kt`, `SyncState.kt`, `AuthSession.kt`; add `inspectionId`/`ownerUid`/`syncState`/`updatedAt` to `main/domain/model/InspectionSession.kt`, `inspectionId` to `Incidence.kt`, `uid` to `User.kt`.
-- [ ] S1-2 Create `main/domain/error/AuthError.kt`, `AuthException.kt`, `SyncError.kt`, `EvidenceError.kt` with the exact enums from design §2.
-- [ ] S1-3 Create interfaces `main/domain/repository/InspectionRepository.kt` (full design §2 surface), `AuthRepository.kt`, `EvidenceRepository.kt`.
+- [x] S1-1 Create `main/domain/model/Evidence.kt`, `SyncState.kt`, `AuthSession.kt`; add `inspectionId`/`ownerUid`/`syncState`/`updatedAt` to `main/domain/model/InspectionSession.kt`, `inspectionId` to `Incidence.kt`, `uid` to `User.kt`.
+- [x] S1-2 Create `main/domain/error/AuthError.kt`, `AuthException.kt`, `SyncError.kt`, `EvidenceError.kt` with the exact enums from design §2.
+- [x] S1-3 Create interfaces `main/domain/repository/InspectionRepository.kt` (full design §2 surface), `AuthRepository.kt`, `EvidenceRepository.kt`.
 - [ ] S1-4 Room v3: modify `main/data/local/entity/InspectionEntity.kt` (PK `inspectionId`, sync columns) and `IncidenceEntity.kt` (`inspectionId`); update `main/data/local/dao/InspectionDao.kt`/`IncidenceDao.kt` (`deleted = 0`, id/owner lookups); create `ProfileEntity.kt`, `ProfileDao.kt`, `EvidenceEntity.kt`, `EvidenceDao.kt`; set `main/data/local/AppDatabase.kt` to version 3 with the new entities and delete the seeded demo user.
 - [ ] S1-5 Update `main/data/mapper/InspectionMapper.kt`/`IncidenceMapper.kt` for the new fields; replace `UserMapper.kt` with `ProfileMapper.kt`.
 - [ ] S1-6 Rename `main/data/repository/InspectionRepository.kt` to `InspectionRepositoryImpl.kt` implementing the interface with sync disabled; update `main/AppContainer.kt`, `main/MainActivity.kt`, `main/ui/viewmodel/ViewModelFactory.kt`.

@@ -4,5 +4,6 @@ data class User(
     val email: String,
     val name: String,
     val cedula: String,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val uid: String = ""
 )
