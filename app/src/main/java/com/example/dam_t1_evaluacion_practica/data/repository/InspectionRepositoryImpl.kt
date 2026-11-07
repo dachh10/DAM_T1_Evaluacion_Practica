@@ -5,17 +5,19 @@ import com.example.dam_t1_evaluacion_practica.data.local.dao.IncidenceDao
 import com.example.dam_t1_evaluacion_practica.data.local.dao.InspectionDao
 import com.example.dam_t1_evaluacion_practica.data.local.dao.UserDao
 import com.example.dam_t1_evaluacion_practica.data.local.entity.EvidenceEntity
-import com.example.dam_t1_evaluacion_practica.data.remote.firestore.RemoteInspectionDataSource
 import com.example.dam_t1_evaluacion_practica.data.mapper.toDomainModel
 import com.example.dam_t1_evaluacion_practica.data.mapper.toEntity
+import com.example.dam_t1_evaluacion_practica.data.remote.firestore.RemoteInspectionDataSource
 import com.example.dam_t1_evaluacion_practica.domain.error.EvidenceError
 import com.example.dam_t1_evaluacion_practica.domain.model.Evidence
+import com.example.dam_t1_evaluacion_practica.domain.model.EvidenceId
 import com.example.dam_t1_evaluacion_practica.domain.model.EvidenceStatus
 import com.example.dam_t1_evaluacion_practica.domain.model.Incidence
 import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionRecord
 import com.example.dam_t1_evaluacion_practica.domain.model.SyncState
 import com.example.dam_t1_evaluacion_practica.domain.model.User
 import com.example.dam_t1_evaluacion_practica.data.sync.SyncCoordinator
+import com.example.dam_t1_evaluacion_practica.domain.repository.EvidenceRepository
 import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +31,8 @@ class InspectionRepositoryImpl(
     private val userDao: UserDao,
     private val evidenceDao: EvidenceDao,
     private val remote: RemoteInspectionDataSource,
-    private val coordinator: SyncCoordinator
+    private val coordinator: SyncCoordinator,
+    private val evidenceRepository: EvidenceRepository
 ) : InspectionRepository {
 
     override fun getAllInspections(): Flow<List<InspectionSessionRecord>> =
@@ -109,47 +112,9 @@ class InspectionRepositoryImpl(
     }
 
     override suspend fun registerEvidence(inspectionId: String, itemId: String, ref: String) {
-        withContext(Dispatchers.IO) {
-            val evidenceId = UUID.nameUUIDFromBytes("$inspectionId|$itemId".toByteArray()).toString()
-            evidenceDao.upsert(
-                EvidenceEntity(
-                    evidenceId = evidenceId,
-                    inspectionId = inspectionId,
-                    itemId = itemId,
-                    localRef = ref,
-                    remoteUrl = null,
-                    status = EvidenceStatus.PENDING.name,
-                    attempts = 0,
-                    lastError = null
-                )
-            )
-        }
+        evidenceRepository.register(inspectionId, itemId, ref)
     }
 
     override fun observeEvidence(inspectionId: String): Flow<List<Evidence>> =
-        evidenceDao.observeByInspection(inspectionId).map { rows ->
-            rows.map { it.toDomainModel() }
-        }
-
-    private fun EvidenceEntity.toDomainModel(): Evidence =
-        Evidence(
-            evidenceId = evidenceId,
-            inspectionId = inspectionId,
-            itemId = itemId,
-            localRef = localRef,
-            remoteUrl = remoteUrl,
-            status = try {
-                EvidenceStatus.valueOf(status)
-            } catch (e: Exception) {
-                EvidenceStatus.PENDING
-            },
-            attempts = attempts,
-            lastError = lastError?.let { name ->
-                try {
-                    EvidenceError.valueOf(name)
-                } catch (e: Exception) {
-                    null
-                }
-            }
-        )
+        evidenceRepository.observe(inspectionId)
 }
