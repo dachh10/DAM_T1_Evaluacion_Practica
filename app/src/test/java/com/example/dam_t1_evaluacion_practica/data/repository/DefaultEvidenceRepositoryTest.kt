@@ -1,9 +1,12 @@
 package com.example.dam_t1_evaluacion_practica.data.repository
 
+import android.content.Context
+import androidx.work.WorkManager
 import com.example.dam_t1_evaluacion_practica.data.local.dao.EvidenceDao
 import com.example.dam_t1_evaluacion_practica.data.local.entity.EvidenceEntity
 import com.example.dam_t1_evaluacion_practica.domain.model.Evidence
 import com.example.dam_t1_evaluacion_practica.domain.model.EvidenceStatus
+import io.mockk.mockk
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -24,7 +27,8 @@ import org.junit.Test
 class DefaultEvidenceRepositoryTest {
 
     private val evidenceDao = FakeEvidenceDao()
-    private val repository = DefaultEvidenceRepository(evidenceDao)
+    private val mockWorkManager = mockk<WorkManager>(relaxed = true)
+    private val repository = DefaultEvidenceRepository(evidenceDao, mockk<Context>(relaxed = true), mockWorkManager)
 
     @Before
     fun setup() {

@@ -46,7 +46,7 @@ class AppContainer(context: Context) {
         policy = SyncConflictPolicy
     )
 
-    val evidence: EvidenceRepository = DefaultEvidenceRepository(db.evidenceDao())
+    val evidence: EvidenceRepository = DefaultEvidenceRepository(db.evidenceDao(), context)
 
     val inspection: InspectionRepository = InspectionRepositoryImpl(
         inspectionDao = db.inspectionDao(),
