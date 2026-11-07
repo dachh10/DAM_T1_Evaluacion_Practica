@@ -7,23 +7,23 @@ import com.example.dam_t1_evaluacion_practica.data.mapper.toEntity
 import com.example.dam_t1_evaluacion_practica.data.remote.mapper.IncidenceRemoteMapper
 import com.example.dam_t1_evaluacion_practica.data.remote.mapper.InspectionRemoteMapper
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class FirestoreInspectionDataSource private constructor(
+class FirestoreInspectionDataSource internal constructor(
     private val firestore: FirebaseFirestore
 ) : RemoteInspectionDataSource {
-    companion object {
-        fun create(): FirestoreInspectionDataSource =
-            FirestoreInspectionDataSource(FirebaseFirestore.getInstance())
-    }
+    constructor() : this(FirebaseFirestore.getInstance())
 
     override suspend fun saveInspection(entity: InspectionEntity) {
         withContext(Dispatchers.IO) {
+            val map = InspectionRemoteMapper.toMap(entity.toDomainModel()).toMutableMap()
+            map["updatedAt"] = FieldValue.serverTimestamp()
             Tasks.await(
                 firestore.collection("inspections").document(entity.inspectionId)
-                    .set(InspectionRemoteMapper.toMap(entity.toDomainModel()))
+                    .set(map)
             )
         }
     }
@@ -35,8 +35,9 @@ class FirestoreInspectionDataSource private constructor(
                 .collection("incidences")
             val batch = firestore.batch()
             entities.forEach { entity ->
-                batch.set(incidencesRef.document(entity.id),
-                    IncidenceRemoteMapper.toMap(entity.toDomainModel()))
+                val map = IncidenceRemoteMapper.toMap(entity.toDomainModel()).toMutableMap()
+                map["updatedAt"] = FieldValue.serverTimestamp()
+                batch.set(incidencesRef.document(entity.id), map)
             }
             Tasks.await(batch.commit())
         }
