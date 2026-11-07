@@ -30,5 +30,5 @@ interface IncidenceDao {
     fun insertIncidence(incidence: IncidenceEntity): Long
 
     @Update
-    fun updateInspection(incidence: IncidenceEntity)
+    fun updateIncidence(incidence: IncidenceEntity)
 }

@@ -1,29 +1,43 @@
 package com.example.dam_t1_evaluacion_practica.data.sync
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
+import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-import com.example.dam_t1_evaluacion_practica.data.sync.InspectionSyncWorker
 import java.util.concurrent.TimeUnit
 
 /**
- * Enqueues unique, network-constrained sync work for one inspection.
+ * Enqueues sync work for one inspection.
  *
- * Work is keyed by `inspection-sync-{inspectionId}` so re-enqueuing the same
- * inspection replaces the previous request (no duplicate sync jobs pile up).
+ * This is an interface and not a concrete WorkManager wrapper so [SyncCoordinator] can be
+ * exercised on the JVM: the Android implementation would drag a `Context` and a live
+ * `WorkManager` into every unit test of the state machine.
  */
-class SyncScheduler(private val context: Context) {
+interface SyncScheduler {
+
+    fun enqueueInspectionSync(inspectionId: String)
+}
+
+/**
+ * Production [SyncScheduler] over WorkManager.
+ *
+ * Work is keyed by `inspection-sync-{inspectionId}` with `REPLACE`, so re-enqueueing the same
+ * inspection replaces the pending request instead of piling up duplicate jobs. `REPLACE` also
+ * resets the attempt budget on a genuine new edit (design section 6) and never on a plain retry.
+ */
+class WorkManagerSyncScheduler(private val context: Context) : SyncScheduler {
+
     private val workManager = WorkManager.getInstance(context)
 
-    fun enqueueInspectionSync(inspectionId: String) {
+    override fun enqueueInspectionSync(inspectionId: String) {
         val request = OneTimeWorkRequestBuilder<InspectionSyncWorker>()
             .setInputData(
-                androidx.work.Data.Builder()
-                    .putString("inspectionId", inspectionId)
+                Data.Builder()
+                    .putString(InspectionSyncWorker.KEY_INSPECTION_ID, inspectionId)
                     .build()
             )
             .setConstraints(
@@ -31,8 +45,13 @@ class SyncScheduler(private val context: Context) {
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
             )
-            .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
-        workManager.enqueueUniqueWork("inspection-sync-$inspectionId", ExistingWorkPolicy.REPLACE, request)
+
+        workManager.enqueueUniqueWork(
+            "inspection-sync-$inspectionId",
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
     }
 }

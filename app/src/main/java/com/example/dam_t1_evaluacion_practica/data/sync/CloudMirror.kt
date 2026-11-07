@@ -26,8 +26,8 @@ class CloudMirror(
             inspectionDao.insertInspection(remoteInspection.copy(syncState = SyncState.SYNCED.name))
         } else if (policy.shouldApplyRemote(
             syncStateOf(localInspection),
-            localInspection.lastSyncedAt,
-            remoteInspection.lastSyncedAt
+            localInspection.updatedAt,
+            remoteInspection.updatedAt
         )) {
             inspectionDao.updateInspection(remoteInspection.copy(syncState = SyncState.SYNCED.name))
         }
@@ -45,7 +45,7 @@ class CloudMirror(
                 localInc.updatedAt,
                 remoteInc.updatedAt
             )) {
-                incidenceDao.updateInspection(remoteInc.copy(syncState = SyncState.SYNCED.name))
+                incidenceDao.updateIncidence(remoteInc.copy(syncState = SyncState.SYNCED.name))
             }
         }
     }

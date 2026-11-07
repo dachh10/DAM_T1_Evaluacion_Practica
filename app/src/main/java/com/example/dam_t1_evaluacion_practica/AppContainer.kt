@@ -7,8 +7,11 @@ import com.example.dam_t1_evaluacion_practica.data.remote.firestore.FirestoreIns
 import com.example.dam_t1_evaluacion_practica.data.remote.firestore.RemoteInspectionDataSource
 import com.example.dam_t1_evaluacion_practica.data.repository.FirebaseAuthRepository
 import com.example.dam_t1_evaluacion_practica.data.repository.InspectionRepositoryImpl
+import com.example.dam_t1_evaluacion_practica.data.sync.CloudMirror
 import com.example.dam_t1_evaluacion_practica.data.sync.SyncCoordinator
 import com.example.dam_t1_evaluacion_practica.data.sync.SyncScheduler
+import com.example.dam_t1_evaluacion_practica.data.sync.WorkManagerSyncScheduler
+import com.example.dam_t1_evaluacion_practica.domain.validation.SyncConflictPolicy
 import com.example.dam_t1_evaluacion_practica.domain.repository.AuthRepository
 import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 
@@ -26,12 +29,19 @@ class AppContainer(context: Context) {
     )
 
     val remote: RemoteInspectionDataSource = FirestoreInspectionDataSource.create()
-    val scheduler: SyncScheduler = SyncScheduler(context)
+    val scheduler: SyncScheduler = WorkManagerSyncScheduler(context)
     val coordinator: SyncCoordinator = SyncCoordinator(
         inspectionDao = db.inspectionDao(),
         incidenceDao = db.incidenceDao(),
         remote = remote,
         scheduler = scheduler
+    )
+
+    val cloudMirror = CloudMirror(
+        inspectionDao = db.inspectionDao(),
+        incidenceDao = db.incidenceDao(),
+        remote = remote,
+        policy = SyncConflictPolicy
     )
 
     val inspection: InspectionRepository = InspectionRepositoryImpl(
