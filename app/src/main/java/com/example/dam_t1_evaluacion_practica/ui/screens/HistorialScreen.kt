@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dam_t1_evaluacion_practica.domain.model.IncidenceStatus
 import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionRecord
+import com.example.dam_t1_evaluacion_practica.domain.model.SyncState
 import com.example.dam_t1_evaluacion_practica.ui.components.AppTopBar
 import com.example.dam_t1_evaluacion_practica.ui.components.BottomNavBar
 import com.example.dam_t1_evaluacion_practica.ui.components.MainTab
@@ -221,7 +222,8 @@ fun HistorialScreen(
                         HistoryRecordCard(
                             record = record,
                             onClick = { onSelectRecord(record) },
-                            onUpdateStatus = { status -> onUpdateRecordStatus(record.folio, status) }
+                            onUpdateStatus = { status -> onUpdateRecordStatus(record.folio, status) },
+                            onRetrySync = { inspectionId -> viewModel.retrySync(inspectionId) }
                         )
                     }
                     item { Spacer(modifier = Modifier.height(12.dp)) }
@@ -288,7 +290,8 @@ private fun StatCell(label: String, value: String, icon: androidx.compose.ui.gra
 private fun HistoryRecordCard(
     record: InspectionSessionRecord,
     onClick: () -> Unit,
-    onUpdateStatus: (IncidenceStatus) -> Unit = {}
+    onUpdateStatus: (IncidenceStatus) -> Unit = {},
+    onRetrySync: (String) -> Unit = {}
 ) {
     val (accent, statusLabel) = recordStatus(record)
     Surface(
@@ -343,6 +346,10 @@ private fun HistoryRecordCard(
                         ClosingStatusChip(
                             record = record,
                             onUpdateStatus = onUpdateStatus
+                        )
+                        SyncStatusChip(
+                            syncState = record.syncState,
+                            onRetry = { onRetrySync(record.inspectionId) }
                         )
                     }
                 }
@@ -478,6 +485,52 @@ private fun ClosingStatusChip(
                             menuExpanded = false
                             if (status != record.status) onUpdateStatus(status)
                         }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Sync status chip for the inspection card. Shows the current cloud sync state and
+ * offers a retry action when the sync has failed.
+ */
+@Composable
+private fun SyncStatusChip(
+    syncState: SyncState,
+    onRetry: () -> Unit
+) {
+    val (color, label, showRetry) = when (syncState) {
+        SyncState.LOCAL_ONLY -> Triple(AmberSecondary, "Pendiente", false)
+        SyncState.PENDING -> Triple(AmberSecondary, "Sincronizando…", false)
+        SyncState.SYNCED -> Triple(SuccessColor, "Sincronizado", false)
+        SyncState.FAILED -> Triple(ErrorColor, "Error · Reintentar", true)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(50.dp),
+        color = color.copy(alpha = 0.12f),
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
+            if (showRetry) {
+                androidx.compose.material3.IconButton(onClick = onRetry) {
+                    Icon(
+                        imageVector = Icons.Outlined.Replay,
+                        contentDescription = "Reintentar sincronización",
+                        tint = color,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }

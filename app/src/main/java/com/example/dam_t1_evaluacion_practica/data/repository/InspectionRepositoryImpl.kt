@@ -48,6 +48,11 @@ class InspectionRepositoryImpl(
     override suspend fun saveInspection(record: InspectionSessionRecord): Long =
         withContext(Dispatchers.IO) {
             val id = inspectionDao.insertInspection(record.toEntity())
+            // Mark all incidences of this inspection as PENDING so the worker pushes them
+            val incidences = incidenceDao.findIncidencesByInspection(record.inspectionId)
+            incidences.forEach { inc ->
+                incidenceDao.updateIncidence(inc.copy(syncState = SyncState.PENDING.name))
+            }
             coordinator.markPending(record.inspectionId)
             id
         }
@@ -55,6 +60,11 @@ class InspectionRepositoryImpl(
     override suspend fun updateInspection(record: InspectionSessionRecord) =
         withContext(Dispatchers.IO) {
             inspectionDao.updateInspection(record.toEntity())
+            // Mark all incidences of this inspection as PENDING so the worker pushes them
+            val incidences = incidenceDao.findIncidencesByInspection(record.inspectionId)
+            incidences.forEach { inc ->
+                incidenceDao.updateIncidence(inc.copy(syncState = SyncState.PENDING.name))
+            }
             coordinator.markPending(record.inspectionId)
         }
 
@@ -65,7 +75,8 @@ class InspectionRepositoryImpl(
 
     override suspend fun saveIncidence(incidence: Incidence): Long =
         withContext(Dispatchers.IO) {
-            incidenceDao.insertIncidence(incidence.toEntity())
+            val entity = incidence.toEntity().copy(syncState = SyncState.PENDING.name)
+            incidenceDao.insertIncidence(entity)
         }
 
     override suspend fun getUserByEmail(email: String): User? =

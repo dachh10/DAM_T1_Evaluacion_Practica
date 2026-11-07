@@ -49,8 +49,8 @@ Change: `firebase-cloud-persistence` · Store: `openspec` · Strict TDD · Revie
 - [x] SYNC-4 Write the failing test first in `test/data/remote/firestore/FirestoreWritePlanTest.kt` (ownerUid stamped from session, `updatedAt` server-owned via `FieldValue.serverTimestamp()`, incidence chunks ≤8); verify `FirestoreInspectionDataSource` writes serverTimestamp.
 - [x] SYNC-5 Write the failing test first in `test/data/sync/CloudMirrorTest.kt` (apply only when clean and newer; `REMOVED` deletes only `SYNCED`); then implement `main/data/sync/CloudMirror.kt` and wire it in `AppContainer`.
 - [x] SYNC-6 `InspectionSyncWorker` is thin glue; unit tests live in `SyncCoordinatorTest`. Worker integration tested via emulator in RULES-4.
-- [ ] SYNC-7 Complete `main/data/repository/InspectionRepositoryImpl.kt` (PENDING on save/update, delete tombstones, `retrySync`, evidence delegation) and wire `main/AppContainer.kt`.
-- [ ] SYNC-8 Write the failing test first in `test/ui/viewmodel/InspectionViewModelSyncTest.kt` (`inspectionId` UUID stable per session, `retrySync` delegates); then update `main/ui/viewmodel/InspectionViewModel.kt` and add the sync chip + retry to `main/ui/screens/HistorialScreen.kt` and `InspectionDetailScreen.kt`.
+- [x] SYNC-7 Complete `main/data/repository/InspectionRepositoryImpl.kt` (PENDING on save/update, delete tombstones, `retrySync`, evidence delegation) and wire `main/AppContainer.kt`.
+- [x] SYNC-8 Write the failing test first in `test/ui/viewmodel/InspectionViewModelSyncTest.kt` (`inspectionId` UUID stable per session, `retrySync` delegates); then update `main/ui/viewmodel/InspectionViewModel.kt` and add the sync chip + retry to `main/ui/screens/HistorialScreen.kt` and `InspectionDetailScreen.kt`.
 
 ## Phase EVID — Capture, Cloudinary, PDF
 

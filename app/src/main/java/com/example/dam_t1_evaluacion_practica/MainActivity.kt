@@ -261,7 +261,8 @@ fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository
                 onBack = {
                     currentScreen = Screen.Inspecciones
                 },
-                onUpdateStatus = { status -> viewModel.updateRecordStatus(freshRecord.folio, status) }
+                onUpdateStatus = { status -> viewModel.updateRecordStatus(freshRecord.folio, status) },
+                viewModel = viewModel
             )
         }
         is Screen.Profile -> {

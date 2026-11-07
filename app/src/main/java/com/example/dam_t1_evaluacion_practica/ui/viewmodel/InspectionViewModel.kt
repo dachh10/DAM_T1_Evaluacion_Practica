@@ -586,6 +586,17 @@ class InspectionViewModel(
         }
     }
 
+    /** Requeues a failed inspection for another sync attempt. */
+    fun retrySync(inspectionId: String) {
+        viewModelScope.launch {
+            try {
+                repository.retrySync(inspectionId)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error reintentando sincronización: ${e.message}") }
+            }
+        }
+    }
+
     private fun generateFolio(existing: List<InspectionSessionRecord>): String {
         val year = Calendar.getInstance().get(Calendar.YEAR)
         val sequence = existing.count { it.folio.contains("$year-") } + 1

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -68,6 +69,8 @@ import com.example.dam_t1_evaluacion_practica.domain.model.ModuleCompletion
 import com.example.dam_t1_evaluacion_practica.domain.model.Normativ
 import com.example.dam_t1_evaluacion_practica.domain.model.NormativesCatalog
 import com.example.dam_t1_evaluacion_practica.domain.model.SessionFinding
+import com.example.dam_t1_evaluacion_practica.domain.model.SyncState
+import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModel
 import com.example.dam_t1_evaluacion_practica.ui.components.NormativeChip
 import com.example.dam_t1_evaluacion_practica.ui.components.NormativeDetailBottomSheet
 import com.example.dam_t1_evaluacion_practica.util.GalleryUtils
@@ -128,7 +131,8 @@ private fun formatDate(ts: Long): String =
 fun InspectionDetailScreen(
     record: InspectionSessionRecord,
     onBack: () -> Unit = {},
-    onUpdateStatus: (IncidenceStatus) -> Unit = {}
+    onUpdateStatus: (IncidenceStatus) -> Unit = {},
+    viewModel: InspectionViewModel? = null
 ) {
     val context = LocalContext.current
     val (accent, statusLabel) = detailStatus(record)
@@ -304,6 +308,10 @@ fun InspectionDetailScreen(
                             ClosingStatusChip(
                                 record = record,
                                 onUpdateStatus = onUpdateStatus
+                            )
+                            SyncStatusChip(
+                                syncState = record.syncState,
+                                onRetry = { viewModel?.retrySync(record.inspectionId) }
                             )
                         }
                     }
@@ -586,6 +594,52 @@ private fun ClosingStatusChip(
                             menuExpanded = false
                             if (status != record.status) onUpdateStatus(status)
                         }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Sync status chip for the inspection detail. Shows the current cloud sync state and
+ * offers a retry action when the sync has failed.
+ */
+@Composable
+private fun SyncStatusChip(
+    syncState: SyncState,
+    onRetry: () -> Unit
+) {
+    val (color, label, showRetry) = when (syncState) {
+        SyncState.LOCAL_ONLY -> Triple(AmberSecondary, "Pendiente", false)
+        SyncState.PENDING -> Triple(AmberSecondary, "Sincronizando…", false)
+        SyncState.SYNCED -> Triple(SuccessColor, "Sincronizado", false)
+        SyncState.FAILED -> Triple(ErrorColor, "Error · Reintentar", true)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(50.dp),
+        color = color.copy(alpha = 0.12f),
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
+            if (showRetry) {
+                androidx.compose.material3.IconButton(onClick = onRetry) {
+                    Icon(
+                        imageVector = Icons.Outlined.Replay,
+                        contentDescription = "Reintentar sincronización",
+                        tint = color,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
