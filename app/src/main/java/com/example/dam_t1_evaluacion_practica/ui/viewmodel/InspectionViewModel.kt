@@ -2,6 +2,8 @@ package com.example.dam_t1_evaluacion_practica.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.dam_t1_evaluacion_practica.domain.error.AuthError
+import com.example.dam_t1_evaluacion_practica.domain.error.AuthException
 import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 import com.example.dam_t1_evaluacion_practica.domain.model.ChecklistItem
 import com.example.dam_t1_evaluacion_practica.domain.model.CriticalityLevel
@@ -145,28 +147,51 @@ class InspectionViewModel(
             try {
                 val user = repository.login(trimmedEmail, trimmedPassword)
                 if (user != null) {
-                    _uiState.update {
-                        it.copy(
-                            currentUser = user,
-                            inspectorName = user.name,
-                            isLoadingAuth = false,
-                            authError = null,
-                            savedInspections = emptyList()
-                        )
-                    }
-                    observeUserInspections(user.email)
+                    applyAuthenticatedUser(user)
                     onSuccess()
                 } else {
                     val msg = "Credenciales incorrectas. Verifica tu correo y contraseña."
                     _uiState.update { it.copy(isLoadingAuth = false, authError = msg) }
                     onError(msg)
                 }
+            } catch (auth: AuthException) {
+                val msg = authErrorMessage(auth.error, "Error al iniciar sesión")
+                _uiState.update { it.copy(isLoadingAuth = false, authError = msg) }
+                onError(msg)
             } catch (e: Exception) {
                 val msg = e.message ?: "Error al iniciar sesión"
                 _uiState.update { it.copy(isLoadingAuth = false, authError = msg) }
                 onError(msg)
             }
         }
+    }
+
+    /**
+     * Restores an authenticated session (design section 9).
+     *
+     * It mirrors the success branch of [login]: the global inspection observation is
+     * cancelled and replaced by the user-scoped one, so a restored session shows the
+     * same user and the same inspections as a fresh sign-in.
+     */
+    fun restoreSession(user: User) {
+        applyAuthenticatedUser(user)
+    }
+
+    /**
+     * Applies an authenticated profile. This is the shared success branch of [login],
+     * [register] and [restoreSession], so all three paths end in the same state.
+     */
+    private fun applyAuthenticatedUser(user: User) {
+        _uiState.update {
+            it.copy(
+                currentUser = user,
+                inspectorName = user.name,
+                isLoadingAuth = false,
+                authError = null,
+                savedInspections = emptyList()
+            )
+        }
+        observeUserInspections(user.email)
     }
 
     fun register(
@@ -207,23 +232,31 @@ class InspectionViewModel(
                 )
                 repository.registerUser(newUser, trimmedPassword)
 
-                _uiState.update {
-                    it.copy(
-                        currentUser = newUser,
-                        inspectorName = newUser.name,
-                        isLoadingAuth = false,
-                        authError = null,
-                        savedInspections = emptyList()
-                    )
-                }
-                observeUserInspections(newUser.email)
+                applyAuthenticatedUser(newUser)
                 onSuccess()
+            } catch (auth: AuthException) {
+                val msg = authErrorMessage(auth.error, "Error al registrar cuenta")
+                _uiState.update { it.copy(isLoadingAuth = false, authError = msg) }
+                onError(msg)
             } catch (e: Exception) {
                 val msg = e.message ?: "Error al registrar cuenta"
                 _uiState.update { it.copy(isLoadingAuth = false, authError = msg) }
                 onError(msg)
             }
         }
+    }
+
+    /**
+     * Maps a domain auth failure to the existing Spanish copy (design section 9).
+     * Provider types and raw codes never reach the UI; [fallback] is used for an
+     * unmapped failure.
+     */
+    private fun authErrorMessage(error: AuthError, fallback: String): String = when (error) {
+        AuthError.INVALID_CREDENTIALS -> "Credenciales incorrectas. Verifica tu correo y contraseña."
+        AuthError.EMAIL_ALREADY_IN_USE -> "Este correo ya está registrado"
+        AuthError.WEAK_PASSWORD -> "La contraseña debe tener al menos 6 caracteres."
+        AuthError.NETWORK_UNAVAILABLE -> "Sin conexión a internet. Revisa tu red e inténtalo de nuevo."
+        AuthError.UNKNOWN -> fallback
     }
 
     fun logout(onLoggedOut: () -> Unit = {}) {

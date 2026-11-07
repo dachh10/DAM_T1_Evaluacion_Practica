@@ -93,8 +93,8 @@ fun LoginScreen(
     var authMode by remember { mutableStateOf(AuthMode.LOGIN) }
 
     // Login fields
-    var loginEmail by remember { mutableStateOf("inspector@seguridad.mx") }
-    var loginPassword by remember { mutableStateOf("password123") }
+    var loginEmail by remember { mutableStateOf("") }
+    var loginPassword by remember { mutableStateOf("") }
 
     // Register fields
     var registerName by remember { mutableStateOf("") }

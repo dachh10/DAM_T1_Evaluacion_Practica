@@ -218,10 +218,10 @@ section.
 
 ---
 
-# Apply Progress: Slice 3 (AUTH-1..2) — Validator and error mapping
+# Apply Progress: Slice 3 (AUTH-1..2) ï¿½ Validator and error mapping
 
-Change: `firebase-cloud-persistence` · Store: `openspec` · Slice 3 of 12 (PR 4 in the forecast) · Mode: Strict TDD
-Status: **COMPLETE** — AUTH-1 and AUTH-2 are green. Purely additive: 4 new files, no existing source modified, 60/60 tests pass and `assembleDebug` succeeds.
+Change: `firebase-cloud-persistence` ï¿½ Store: `openspec` ï¿½ Slice 3 of 12 (PR 4 in the forecast) ï¿½ Mode: Strict TDD
+Status: **COMPLETE** ï¿½ AUTH-1 and AUTH-2 are green. Purely additive: 4 new files, no existing source modified, 60/60 tests pass and `assembleDebug` succeeds.
 
 ## Slice boundary
 
@@ -277,3 +277,95 @@ unit-tested; the data source can sign in/register/observe a session. `FirebaseAu
 
 AUTH-3 (`ProfileRemoteMapper` + `FirebaseAuthRepository`), AUTH-4 (ViewModel error mapping + `LoginScreen`
 prefill removal), AUTH-5 (`restoreSession` + auth-aware navigation + `AppContainer.auth`).
+
+---
+
+# Apply Progress: Slice 4 (AUTH-3..5) - Profile mapper, auth repository, error mapping, session restore
+
+Change: `firebase-cloud-persistence` - Store: `openspec` - Slice 4 of 12 (PR 5 in the forecast) - Mode: Strict TDD
+Status: **COMPLETE** - AUTH-3, AUTH-4 and AUTH-5 are green. 71/71 unit tests pass and `assembleDebug` succeeds.
+
+## Slice boundary
+
+Start: `859a3c7` (`feat(auth): add auth validator and firebase auth data source`), branch
+`feature/firebase-cloud-persistence`. End: a pure profile mapper, an `AuthRepository` over Firebase Auth +
+the Room `profiles` cache, Spanish error mapping in the ViewModel, and an auth-aware navigation that restores
+a session without network. SYNC, EVID, RULES and POL stay pending.
+
+## What changed
+
+| File | Action | What was done |
+|---|---|---|
+| `test/data/remote/mapper/ProfileRemoteMapperTest.kt` | Created | 4 cases: remote field names without a credential, exact round-trip, defaults for missing keys plus unknown keys ignored, `Number` -> `Long` for `createdAt`. |
+| `main/data/remote/mapper/ProfileRemoteMapper.kt` | Created | Pure `object`: `toMap(User)` / `fromMap(uid, Map<String, Any?>)`. Keys `email`, `displayName`, `cedula`, `createdAt`; `updatedAt` is server-owned and never written. No Firebase types, no `org.json`, no reflection. |
+| `main/data/repository/FirebaseAuthRepository.kt` | Created | `AuthRepository` over `FirebaseAuthDataSource` + `ProfileDao`: `session` is the provider `callbackFlow`, `signIn`/`register` map the session to a profile, `observeProfile`/`cachedProfile` read the `profiles` table, `ensureProfile` rebuilds a missing cache row from the session identity and writes the local cache (remote write is a non-fatal injected hook). |
+| `test/ui/viewmodel/InspectionViewModelAuthTest.kt` | Created | 4 cases: `INVALID_CREDENTIALS` -> existing Spanish message, `EMAIL_ALREADY_IN_USE` -> existing Spanish message, `NETWORK_UNAVAILABLE` -> Spanish copy, and a sweep over every `AuthError` asserting no provider code reaches the UI. |
+| `main/ui/viewmodel/InspectionViewModel.kt` | Modified | Catches `AuthException` before the generic handler and maps the enum to the existing Spanish copy (`authErrorMessage`); new `restoreSession` plus the shared `applyAuthenticatedUser` helper now used by `login`, `register` and `restoreSession`. |
+| `main/ui/screens/LoginScreen.kt` | Modified | Demo prefill removed: the login email and password start empty. |
+| `test/ui/viewmodel/InspectionViewModelSessionTest.kt` | Created | 3 cases: restore sets the user and observes the user inspections, restore replaces the global list with the user scope, restore mirrors the login success branch. |
+| `main/MainActivity.kt` | Modified | Reads `AppContainer.auth`; collects the session flow and reacts: restored session -> `viewModel.restoreSession(profile)` -> `Screen.Dashboard` after the splash, lost session on a protected screen -> `Screen.Login`; logout also terminates the provider session. |
+| `main/AppContainer.kt` | Modified | `auth: AuthRepository` wired with `FirebaseAuthDataSource` and `db.profileDao()`. |
+
+Pre-existing uncommitted edits in `ui/screens/ChecklistModuleScreen.kt` and the untracked
+`Diagrama Clases Arquitectura.md` / `app/google-services.json` were left untouched. No Gradle file was
+changed, no dependency was added, and the Room schema, DAOs and entities were not modified.
+
+## Deviations from design / task text
+
+1. **`ProfileRemoteMapper.toMap` also writes `createdAt` (Long millis).** Design section 4 lists
+   `email, displayName, cedula, updatedAt` for `users/{uid}`. `updatedAt` is server-owned (section 4) and is
+   therefore never written, but `createdAt` is added so `fromMap(uid, toMap(user)) == user` holds for the whole
+   domain model, as the section 5 round-trip contract requires. It is a plain number: no credential, no SDK type.
+2. **`FirebaseAuthRepository` writes the local profile cache; the remote `users/{uid}` write is an injected
+   hook.** Design section 9 assigns the profile write to this repository, but the Firestore data source belongs
+   to SYNC-4. `remoteProfileWriter: suspend (User) -> Unit = {}` is the seam SYNC-4 fills; the repository owns
+   the call and treats its failure as non-fatal, exactly as section 9 requires.
+3. **`ensureProfile` keeps the cached display name and cedula.** A missing cache row is rebuilt from the
+   session identity (`email`, empty `name`, empty `cedula`); an existing row is refreshed, not overwritten.
+4. **New Spanish copy for the two errors that had none.** `WEAK_PASSWORD` -> "La contraseï¿½a debe tener al menos
+   6 caracteres." and `NETWORK_UNAVAILABLE` -> "Sin conexiï¿½n a internet. Revisa tu red e intï¿½ntalo de nuevo.".
+   `INVALID_CREDENTIALS` and `EMAIL_ALREADY_IN_USE` reuse the messages the ViewModel already showed.
+5. **`AuthValidator` is still not called by the ViewModel.** The "Domain-Layer Validation" requirement (invalid
+   input must not trigger a request) is still open: AUTH-1 shipped the pure validator, but wiring it into
+   `login`/`register` is not named by AUTH-3..5 and was left out of this slice.
+6. **`FirebaseAuthRepository` has no JVM unit test.** `FirebaseAuthDataSource` is a final class bound to
+   `FirebaseAuth`, so the repository has no JVM seam; design section 13 assigns Firebase Auth to the instrumented
+   emulator phase (RULES-3/RULES-4). The mapper, which is the test target named by AUTH-3, is fully covered.
+
+## TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| AUTH-3 | `test/data/remote/mapper/ProfileRemoteMapperTest.kt` | Unit (pure) | 60/60 baseline | `compileDebugUnitTestKotlin` failed: `Unresolved reference 'ProfileRemoteMapper'` | 4 tests / 0 failures | field names, round-trip, missing keys, unknown keys, `Number` -> `Long` | key constants extracted; the mapper stayed a pure `object` |
+| AUTH-4 | `test/ui/viewmodel/InspectionViewModelAuthTest.kt` | Unit (mocked repo) | 60/60 baseline + AUTH-3 green | 4 tests / 4 failed (`expected:<Credenciales incorrectas...> but was:<INVALID_CREDENTIALS>`) | 4 tests / 0 failures | 3 named errors + a sweep over every `AuthError` | `authErrorMessage(error, fallback)` extracted; login/register share it |
+| AUTH-5 | `test/ui/viewmodel/InspectionViewModelSessionTest.kt` | Unit (mocked repo) | 60/60 baseline + AUTH-4 green | `compileDebugUnitTestKotlin` failed: `Unresolved reference 'restoreSession'` | 3 tests / 0 failures | user scope, global-scope replacement, login/restore parity | `applyAuthenticatedUser` shared by login, register and restore |
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test commands and exact result | AUTH-3: `:app:testDebugUnitTest --tests "...ProfileRemoteMapperTest"` -> BUILD SUCCESSFUL, XML 4 tests / 0 failures / 0 errors / 0 skipped. AUTH-4: `--tests "...InspectionViewModelAuthTest"` -> BUILD SUCCESSFUL, XML 4 / 0 / 0 / 0. AUTH-5: `--tests "...InspectionViewModelSessionTest"` -> BUILD SUCCESSFUL, XML 3 / 0 / 0 / 0. |
+| Runtime harness | No runtime boundary exists on the JVM for these units (the repository and the session flow are bound to the Firebase SDK and to Compose navigation). `:app:assembleDebug` -> **BUILD SUCCESSFUL in 22s**, compiling the Firebase-typed repository, the `AppContainer` wiring and the auth-aware navigation against `firebase-auth` 24.0.1. Device behaviour (offline relaunch, wrong password) is the RULES-3/RULES-4 emulator and manual gate. |
+| Full regression | `:app:testDebugUnitTest` -> BUILD SUCCESSFUL; XML totals from `app/build/test-results/testDebugUnitTest/*.xml`: `ExampleUnitTest` 1, `InspectionViewModelTest` 41, `AuthValidatorTest` 11, `AuthErrorMapperTest` 7, `ProfileRemoteMapperTest` 4, `InspectionViewModelAuthTest` 4, `InspectionViewModelSessionTest` 3 = **71 tests, 0 failures, 0 errors, 0 skipped**. The 60 pre-existing tests stay green. |
+| Rollback boundary | Delete `ProfileRemoteMapper.kt`, `FirebaseAuthRepository.kt` and the 3 new test files; revert `AppContainer.kt`, `MainActivity.kt`, `LoginScreen.kt` and `InspectionViewModel.kt` to `859a3c7`, plus the AUTH-3..5 checkboxes and this section. `ChecklistModuleScreen.kt` is not part of this slice. |
+| Authored line count | 489 changed lines (140 modified + 349 new). The PR 5 forecast estimated ~210; the excess is the 3 test files AUTH-3..5 mandate (240 lines) plus the 2 new production files. The code was not compressed to fit the budget. |
+
+## Cumulative task status
+
+| Phase | Tasks | State |
+|---|---|---|
+| S0 | S0-1..S0-7 | complete |
+| S1 | S1-1..S1-7 | complete |
+| AUTH | AUTH-1..AUTH-5 | complete |
+| SYNC | SYNC-1..SYNC-8 | pending |
+| EVID | EVID-1..EVID-8 | pending |
+| RULES | RULES-1..RULES-5 | pending |
+| POL | POL-1..POL-3 | pending |
+
+## Known follow-ups
+
+- `AuthValidator` is not wired into the ViewModel yet (domain-layer validation requirement still open).
+- `InspectionRepositoryImpl.login`/`registerUser` still read the legacy local `users` credential table; SYNC-7
+  must delegate them to `AuthRepository` so the ViewModel's `AuthException` path is reached end to end.
+- `FirebaseAuthRepository.remoteProfileWriter` is still the default no-op; SYNC-4 supplies the Firestore writer.
+- The legacy `users` table and `UserMapper` are removed by POL-2.

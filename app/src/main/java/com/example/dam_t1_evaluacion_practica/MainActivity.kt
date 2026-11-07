@@ -8,17 +8,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModelProvider
 import com.example.dam_t1_evaluacion_practica.data.local.SampleData
+import com.example.dam_t1_evaluacion_practica.domain.model.AuthSession
 import com.example.dam_t1_evaluacion_practica.domain.model.ChecklistItem
 import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionRecord
+import com.example.dam_t1_evaluacion_practica.domain.model.User
+import com.example.dam_t1_evaluacion_practica.domain.repository.AuthRepository
 import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 import com.example.dam_t1_evaluacion_practica.ui.components.MainTab
 import com.example.dam_t1_evaluacion_practica.ui.screens.ChecklistModuleScreen
@@ -35,6 +40,7 @@ import com.example.dam_t1_evaluacion_practica.ui.screens.SplashScreen
 import com.example.dam_t1_evaluacion_practica.ui.theme.DAM_T1_Evaluacion_PracticaTheme
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModel
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModelFactory
+import kotlinx.coroutines.launch
 
 sealed class Screen {
     data object Splash : Screen()
@@ -53,6 +59,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var viewModel: InspectionViewModel
     private lateinit var repository: InspectionRepository
+    private lateinit var authRepository: AuthRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +67,7 @@ class MainActivity : ComponentActivity() {
 
         val container = (application as SecurityInspectionsApp).container
         repository = container.inspection
+        authRepository = container.auth
         val factory = InspectionViewModelFactory(repository)
         viewModel = ViewModelProvider(this, factory)[InspectionViewModel::class.java]
 
@@ -69,7 +77,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    InspectionApp(viewModel = viewModel)
+                    InspectionApp(viewModel = viewModel, authRepository = authRepository)
                 }
             }
         }
@@ -77,14 +85,46 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun InspectionApp(viewModel: InspectionViewModel) {
+fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository) {
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Splash) }
+    var splashFinished by remember { mutableStateOf(false) }
+    var session by remember { mutableStateOf<AuthSession?>(null) }
+    var sessionResolved by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(authRepository) {
+        authRepository.session.collect { active ->
+            session = active
+            sessionResolved = true
+        }
+    }
+
+    // Auth-aware navigation (design section 9): a restored session reopens the
+    // dashboard, and losing the session returns to the login screen.
+    LaunchedEffect(session, sessionResolved, splashFinished) {
+        if (!sessionResolved || !splashFinished) return@LaunchedEffect
+        val active = session
+        if (active == null) {
+            // The provider session is gone: the local identity must go with it.
+            viewModel.logout()
+            if (currentScreen.isProtected()) currentScreen = Screen.Login
+            return@LaunchedEffect
+        }
+        // The profile comes from the local cache; an empty cache still opens the app.
+        val profile = authRepository.cachedProfile(active.uid)
+            ?: User(email = active.email, name = "", cedula = "", uid = active.uid)
+        viewModel.restoreSession(profile)
+        // The splash is over: a restored session goes straight to the dashboard.
+        if (currentScreen == Screen.Splash || currentScreen == Screen.Login) {
+            currentScreen = Screen.Dashboard
+        }
+    }
 
     when (val screen = currentScreen) {
         is Screen.Splash -> {
             SplashScreen(
                 onSplashFinished = {
-                    currentScreen = Screen.Login
+                    splashFinished = true
                 }
             )
         }
@@ -238,6 +278,9 @@ fun InspectionApp(viewModel: InspectionViewModel) {
                     viewModel.logout {
                         currentScreen = Screen.Login
                     }
+                    // The ViewModel owns the local state only: terminating the provider
+                    // session is what makes the session flow emit null.
+                    scope.launch { authRepository.signOut() }
                 }
             )
         }
@@ -248,4 +291,10 @@ private fun itemsFor(module: InspectionModule): List<ChecklistItem> = when (modu
     InspectionModule.EPP -> SampleData.eppItems
     InspectionModule.MACHINERY -> SampleData.machineryItems
     InspectionModule.FACILITIES -> SampleData.environmentItems
+}
+
+/** Screens that require an authenticated session. */
+private fun Screen.isProtected(): Boolean = when (this) {
+    Screen.Splash, Screen.Login -> false
+    else -> true
 }

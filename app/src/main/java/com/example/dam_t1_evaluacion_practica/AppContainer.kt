@@ -2,7 +2,10 @@ package com.example.dam_t1_evaluacion_practica
 
 import android.content.Context
 import com.example.dam_t1_evaluacion_practica.data.local.AppDatabase
+import com.example.dam_t1_evaluacion_practica.data.remote.auth.FirebaseAuthDataSource
+import com.example.dam_t1_evaluacion_practica.data.repository.FirebaseAuthRepository
 import com.example.dam_t1_evaluacion_practica.data.repository.InspectionRepositoryImpl
+import com.example.dam_t1_evaluacion_practica.domain.repository.AuthRepository
 import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 
 /**
@@ -12,6 +15,11 @@ import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionReposi
 class AppContainer(context: Context) {
 
     val db: AppDatabase = AppDatabase.getDatabase(context)
+
+    val auth: AuthRepository = FirebaseAuthRepository(
+        dataSource = FirebaseAuthDataSource(),
+        profileDao = db.profileDao()
+    )
 
     val inspection: InspectionRepository = InspectionRepositoryImpl(
         inspectionDao = db.inspectionDao(),
