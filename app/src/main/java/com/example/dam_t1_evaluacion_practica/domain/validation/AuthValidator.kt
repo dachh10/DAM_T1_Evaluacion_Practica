@@ -1,6 +1,8 @@
 package com.example.dam_t1_evaluacion_practica.domain.validation
 
 import com.example.dam_t1_evaluacion_practica.domain.error.AuthError
+import com.example.dam_t1_evaluacion_practica.domain.model.SyncState
+import com.example.dam_t1_evaluacion_practica.domain.model.User
 
 /**
  * Pure validation rules applied before any network request (design section 2).
@@ -47,4 +49,35 @@ object AuthValidator {
     private fun validateEmail(email: String): AuthError? {
         return if (isValidEmail(email)) null else AuthError.INVALID_CREDENTIALS
     }
+}
+
+/**
+ * Conflict rule for cloud mirroring (design section 6).
+ *
+ * A remote snapshot is applied locally **only if** the local record is `SYNCED` and the
+ * remote one is newer. A local record in `LOCAL_ONLY`, `PENDING` or `FAILED` ignores
+ * remote snapshots entirely — the dirty local copy wins until its push is acknowledged.
+ * A remote `REMOVED` deletes locally only when the local record is `SYNCED`.
+ */
+object SyncConflictPolicy {
+
+    /**
+     * Returns `true` when a remote snapshot should overwrite the local record.
+     */
+    fun shouldApplyRemote(
+        localSyncState: SyncState,
+        localUpdatedAt: Long?,
+        remoteUpdatedAt: Long?
+    ): Boolean {
+        if (localSyncState != SyncState.SYNCED) return false
+        if (remoteUpdatedAt == null) return false
+        if (localUpdatedAt == null) return true
+        return remoteUpdatedAt > localUpdatedAt
+    }
+
+    /**
+     * Returns `true` when a remote `REMOVED` change should delete the local record.
+     */
+    fun shouldDeleteOnRemoved(localSyncState: SyncState): Boolean =
+        localSyncState == SyncState.SYNCED
 }

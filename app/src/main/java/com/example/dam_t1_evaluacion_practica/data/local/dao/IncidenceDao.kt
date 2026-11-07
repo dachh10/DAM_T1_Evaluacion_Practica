@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.example.dam_t1_evaluacion_practica.data.local.entity.IncidenceEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -27,4 +28,7 @@ interface IncidenceDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertIncidence(incidence: IncidenceEntity): Long
+
+    @Update
+    fun updateInspection(incidence: IncidenceEntity)
 }

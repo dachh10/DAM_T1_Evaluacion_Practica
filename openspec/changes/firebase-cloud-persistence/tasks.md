@@ -43,8 +43,8 @@ Change: `firebase-cloud-persistence` · Store: `openspec` · Strict TDD · Revie
 
 ## Phase SYNC — Firestore replica
 
-- [ ] SYNC-1 Write the failing tests first in `test/data/remote/mapper/InspectionRemoteMapperTest.kt` and `IncidenceRemoteMapperTest.kt` (round-trip, omitted nulls, unknown keys/enums, evidence URL substitution, illegal map keys dropped); then implement `main/data/remote/mapper/InspectionRemoteMapper.kt`/`IncidenceRemoteMapper.kt` (pure maps, no `org.json`/Firebase types).
-- [ ] SYNC-2 Write the failing test first in `test/domain/validation/SyncConflictPolicyTest.kt` (remote wins only when `SYNCED` and newer; dirty ignores remote); then implement `main/domain/validation/SyncConflictPolicy.kt`.
+- [x] SYNC-1 Write the failing tests first in `test/data/remote/mapper/InspectionRemoteMapperTest.kt` and `IncidenceRemoteMapperTest.kt` (round-trip, omitted nulls, unknown keys/enums, evidence URL substitution, illegal map keys dropped); then implement `main/data/remote/mapper/InspectionRemoteMapper.kt`/`IncidenceRemoteMapper.kt` (pure maps, no `org.json`/Firebase types).
+- [x] SYNC-2 Write the failing test first in `test/domain/validation/SyncConflictPolicyTest.kt` (remote wins only when `SYNCED` and newer; dirty ignores remote); then implement `main/domain/validation/SyncConflictPolicy.kt`.
 - [ ] SYNC-3 Write the failing test first in `test/data/sync/SyncCoordinatorTest.kt` with `test/data/sync/FakeRemoteDataSource.kt` and `InMemoryLocalStore.kt` (LOCAL_ONLY→PENDING→SYNCED, FAILED terminal, tombstone, retry); then implement `main/data/sync/SyncCoordinator.kt` and `SyncScheduler.kt` (unique work, CONNECTED, 30 s backoff, 5 attempts).
 - [ ] SYNC-4 Write the failing test first in `test/data/remote/firestore/FirestoreWritePlanTest.kt` (ownerUid stamped from session, `updatedAt` server-owned, incidence chunks ≤8); then create `main/data/remote/firestore/RemoteInspectionDataSource.kt` and `FirestoreInspectionDataSource.kt`.
 - [ ] SYNC-5 Write the failing test first in `test/data/sync/CloudMirrorTest.kt` (apply only when clean and newer; `REMOVED` deletes only `SYNCED`); then implement `main/data/sync/CloudMirror.kt`.

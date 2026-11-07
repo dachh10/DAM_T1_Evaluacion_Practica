@@ -369,3 +369,57 @@ changed, no dependency was added, and the Room schema, DAOs and entities were no
   must delegate them to `AuthRepository` so the ViewModel's `AuthException` path is reached end to end.
 - `FirebaseAuthRepository.remoteProfileWriter` is still the default no-op; SYNC-4 supplies the Firestore writer.
 - The legacy `users` table and `UserMapper` are removed by POL-2.
+
+---
+
+# Apply Progress: Slice 5 (S2a) — Uncommitted SYNC work stabilised
+
+Change: `firebase-cloud-persistence` - Store: `openspec` - Slice 5 of 12 - Mode: Strict TDD
+Status: **STABILISED** - the working tree compiles again and the full suite is green. The
+uncommitted SYNC code (SYNC-3..SYNC-7 groundwork) still has **no tests** for its behavioral seams.
+
+## Slice boundary
+
+Start: `2eca311` (`feat(sync): add Firestore remote mappers and conflict policy`), branch
+`feature/firebase-cloud-persistence`. End: `:app:assembleDebug` and `:app:testDebugUnitTest` green
+over the uncommitted SYNC groundwork, with the exact baseline recorded.
+
+## Blocker found and fixed
+
+The checked-out working tree did not compile:
+
+```
+> Task :app:kspDebugKotlin FAILED
+e: [ksp] [MissingType]: Element '...data.local.dao.IncidenceDao' references a type that is not present
+```
+
+Root cause: `IncidenceDao.kt` declared `@Update fun updateInspection(...)` without importing
+`androidx.room.Update`. KSP could not resolve the annotation type and aborted before Kotlin compiled.
+
+Fix: added the missing `import androidx.room.Update` (one line, no behavior change).
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused command and exact result | `Runner :app:assembleDebug` -> **BUILD SUCCESSFUL in 2m 8s** (51 tasks, 15 executed), only pre-existing deprecation warnings. |
+| Test gate | `Runner :app:testDebugUnitTest` -> BUILD SUCCESSFUL; XML totals from `app/build/test-results/testDebugUnitTest/*.xml`: **93 tests, 0 failures, 0 errors, 0 skipped** across 10 suites (`InspectionViewModelTest` 41, `AuthValidatorTest` 11, `InspectionRemoteMapperTest` 8, `SyncConflictPolicyTest` 8, `AuthErrorMapperTest` 7, `IncidenceRemoteMapperTest` 6, `ProfileRemoteMapperTest` 4, `InspectionViewModelAuthTest` 4, `InspectionViewModelSessionTest` 3, `ExampleUnitTest` 1). |
+| Rollback boundary | Revert the single import line; the previously recorded 71-test baseline returns. |
+
+## Gaps confirmed in the uncommitted SYNC groundwork
+
+1. `CloudMirror` is never constructed in `AppContainer` - no Firestore -> Room download path exists.
+2. Incidences are never marked `PENDING` on save, so the worker only ever pushes the parent document.
+3. `SyncConflictPolicy` lives inside `domain/validation/AuthValidator.kt` instead of its own file
+   (its test already targets the object independently).
+4. `InspectionSyncWorker` imports `ListenableWorker`, `CoroutineScope`, `SupervisorJob`, `launch`,
+   `InspectionDao` and `RemoteInspectionDataSource` without using them.
+5. No tests exist for `SyncCoordinator`, `SyncScheduler`, `CloudMirror`, `FirestoreInspectionDataSource`
+   or `InspectionSyncWorker`, although `strict_tdd: true` is active for this change.
+6. `firestore.rules`, `firestore.indexes.json` and `firebase.json` do not exist yet (RULES-1).
+
+## Product decisions recorded
+
+- Evidence images go to **Cloudinary** (unsigned preset `ml_default`), not Firebase Storage: the
+  Firebase project is on the Spark plan and the instructor authorised Cloudinary explicitly.
+  Firebase remains the infrastructure for authentication (Auth) and information (Firestore).
