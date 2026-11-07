@@ -2,7 +2,7 @@ package com.example.dam_t1_evaluacion_practica.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.dam_t1_evaluacion_practica.data.repository.InspectionRepository
+import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 import com.example.dam_t1_evaluacion_practica.domain.model.ChecklistItem
 import com.example.dam_t1_evaluacion_practica.domain.model.CriticalityLevel
 import com.example.dam_t1_evaluacion_practica.domain.model.Incidence
@@ -97,15 +97,15 @@ class InspectionViewModel(
     private val _uiState = MutableStateFlow(InspectionUiState())
     val uiState: StateFlow<InspectionUiState> = _uiState.asStateFlow()
 
-    /** Maps checklistItemId -> persisted Incidence id so evidence (photo + GPS) can be
-     *  re-saved over the original row (DAO insert uses REPLACE by id). */
+
     private val persistedIncidenceIds = mutableMapOf<String, String>()
+
+    private var activeInspectionId: String = UUID.randomUUID().toString()
 
     private var inspectionsJob: Job? = null
 
     init {
-        // Load initial inspections. If a user is later logged in, observeUserInspections
-        // takes over and filters specifically for that user's email.
+
         observeAllInspections()
     }
 
@@ -265,6 +265,7 @@ class InspectionViewModel(
     }
 
     fun startNewSession() {
+        activeInspectionId = UUID.randomUUID().toString()
         persistedIncidenceIds.clear()
         _uiState.update {
             it.copy(
@@ -360,6 +361,7 @@ class InspectionViewModel(
                 try {
                     val incidence = Incidence(
                         id = incidenceId,
+                        inspectionId = activeInspectionId,
                         checklistItemId = item.id,
                         status = IncidenceStatus.OPEN,
                         timestamp = System.currentTimeMillis(),
@@ -398,6 +400,7 @@ class InspectionViewModel(
                 repository.saveIncidence(
                     Incidence(
                         id = incidenceId,
+                        inspectionId = activeInspectionId,
                         checklistItemId = itemId,
                         status = IncidenceStatus.OPEN,
                         timestamp = updated.timestamp,
@@ -499,6 +502,7 @@ class InspectionViewModel(
 
         val record = InspectionSessionRecord(
             folio = generateFolio(s.savedInspections),
+            inspectionId = activeInspectionId,
             userEmail = user?.email ?: "",
             companyName = s.companyName,
             zoneName = s.zoneName,

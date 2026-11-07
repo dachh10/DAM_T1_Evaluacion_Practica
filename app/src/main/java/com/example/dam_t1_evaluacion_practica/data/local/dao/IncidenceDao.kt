@@ -9,8 +9,21 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface IncidenceDao {
-    @Query("SELECT * FROM incidences ORDER BY timestamp DESC")
+
+    @Query("SELECT * FROM incidences WHERE deleted = 0 ORDER BY timestamp DESC")
     fun getAllIncidences(): Flow<List<IncidenceEntity>>
+
+    @Query(
+        "SELECT * FROM incidences WHERE deleted = 0 AND inspectionId = :inspectionId " +
+            "ORDER BY timestamp DESC"
+    )
+    fun getIncidencesByInspection(inspectionId: String): Flow<List<IncidenceEntity>>
+
+    @Query(
+        "SELECT * FROM incidences WHERE deleted = 0 AND inspectionId = :inspectionId " +
+            "ORDER BY timestamp DESC"
+    )
+    suspend fun findIncidencesByInspection(inspectionId: String): List<IncidenceEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertIncidence(incidence: IncidenceEntity): Long

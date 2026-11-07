@@ -155,3 +155,63 @@ and all wiring stay in S1b (S1-4..S1-7).
 S1-4 (Room v3), S1-5 (mappers), S1-6 (impl rename + wiring) and S1-7 (42-test regression gate) are not
 part of this batch. The 42-test gate currently still imports `data.repository.InspectionRepository`;
 that single-line move belongs to S1-7.
+
+---
+
+## Slice S1b - Room v3 and repository extraction (S1-4..S1-7)
+
+Status: **COMPLETE**. `assembleDebug` green and the full suite passes with the design's `suspend` DAO
+surface intact.
+
+### What changed
+
+| Area | Files | What was done |
+|---|---|---|
+| Entities | `InspectionEntity.kt`, `IncidenceEntity.kt`, `EvidenceEntity.kt` (new), `ProfileEntity.kt` (new) | `inspectionId` is the `inspections` PK; sync columns (`ownerUid`, `syncState`, `updatedAt`, `deleted`, `lastSyncedAt`); `incidences.inspectionId` FK; new `evidence` upload-queue and `profiles` cache tables |
+| DAOs | `InspectionDao.kt`, `IncidenceDao.kt`, `EvidenceDao.kt` (new), `ProfileDao.kt` (new) | `deleted = 0` filters, id/owner lookups, blocking `findBy...` reads, evidence queue access, profile read/write |
+| Database | `AppDatabase.kt` | version **3**, five DAOs registered, `fallbackToDestructiveMigration()`, demo-user `RoomDatabase.Callback` and `Executors` seed removed |
+| Mappers | `InspectionMapper.kt`, `IncidenceMapper.kt`, `ProfileMapper.kt` (new), `UserMapper.kt` (deleted) | map the new domain fields; credential-bearing user mapper replaced by a profile mapper |
+| Repository | `data/repository/InspectionRepository.kt` -> `InspectionRepositoryImpl.kt` | implements `domain.repository.InspectionRepository`; sync disabled (writes stay `LOCAL_ONLY`/`PENDING`); `registerEvidence` is a block body so the override returns `Unit` |
+| Wiring | `AppContainer.kt`, `MainActivity.kt`, `ViewModelFactory.kt` | construct/consume the impl behind the domain interface |
+| ViewModel | `InspectionViewModel.kt` | six design section 7 identity points: interface import, `activeInspectionId`, rotate on `startNewSession`, `saveDictamen`, `submitAnswer`, `attachFindingEvidence` |
+| Regression gate | `InspectionViewModelTest.kt` | only the import line changed to `domain.repository.InspectionRepository` |
+
+### Room 2.6.1 cannot run under KSP2 (blocker and resolution)
+
+The first verification run failed with `e: [ksp] java.lang.IllegalStateException: unexpected jvm
+signature V`, and after that was worked around, with `EvidenceDao_Impl is not abstract and does not
+override ... upsert(EvidenceEntity, Continuation<? super Long>)`.
+
+Root cause is **not** project code. Room 2.6.1 emits JVM-invalid DAO implementations for any `suspend`
+DAO method under KSP2 (`Continuation<Long>` where Kotlin requires `Continuation<? super Long>`), and
+KSP2 reports the JVM signature of a `suspend`+`Unit` `@Insert` as `V`, which Room 2.6.1 cannot parse.
+The failure surfaces through `ShortcutMethodProcessor.extractReturnType` and
+`InsertionMethodProcessor`. This project never hit it before because no DAO had a `suspend` method;
+S1b introduces nine. Upstream reference: google/ksp#2957; the documented fix is Room 2.7.0+.
+
+Resolution (user-approved): Room bumped `2.6.1 -> 2.8.5` in `gradle/libs.versions.toml`, and
+`app/build.gradle.kts` now consumes `libs.room.runtime`, `libs.room.compiler` and `libs.room.ktx`
+instead of hardcoded `2.6.1` coordinates (the module previously ignored the version catalog entirely).
+The DAO surface keeps `suspend` as design section 2/6 requires; no signature was weakened.
+
+### S1a deviations resolved
+
+`InspectionSession.inspectionId` and `Incidence.inspectionId` no longer carry a `""` default - both are
+now required, and the ViewModel/mappers supply the real value, which removes deviation 1 from the S1a
+section.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `:app:testDebugUnitTest` -> BUILD SUCCESSFUL; XML totals from `app/build/test-results/testDebugUnitTest/*.xml`: **42 tests, 0 failures, 0 errors, 0 skipped** (`ExampleUnitTest` 1, `InspectionViewModelTest` 41). |
+| Runtime harness command and exact result | `:app:assembleDebug` -> **BUILD SUCCESSFUL in 1m 33s** after the Room 2.8.5 bump; `:app:kspDebugKotlin` green with the new DAOs. |
+| Schema delta | `AppDatabase` reports `version = 3` with `InspectionEntity`, `IncidenceEntity`, `UserEntity`, `ProfileEntity`, `EvidenceEntity`; destructive migration accented by design (clean start). |
+| Rollback boundary | Revert the S1b files (entities, DAOs, mappers, repository impl rename, wiring, ViewModel identity points) and the Room bump; `tasks.md`/this artifact revert with them. `ChecklistModuleScreen.kt` carries a pre-existing user edit and is not part of this slice. |
+
+### Known follow-ups
+
+- `EvidenceEntity` has no `updatedAt` column; EVID may add one.
+- Room 2.8.x deprecates the no-arg `fallbackToDestructiveMigration()`; still functional and intentional
+  for the clean start, revisit if migrations become real.
+

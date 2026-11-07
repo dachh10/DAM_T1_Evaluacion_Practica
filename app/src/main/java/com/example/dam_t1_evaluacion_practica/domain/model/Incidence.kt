@@ -6,9 +6,8 @@ enum class IncidenceStatus {
 
 data class Incidence(
     val id: String,
-    // Parent inspection id; the ViewModel stamps it at creation. The default keeps
-    // the pre-existing construction sites compiling until that change lands.
-    val inspectionId: String = "",
+    // Parent inspection id; the ViewModel stamps it at creation.
+    val inspectionId: String,
     val checklistItemId: String,
     val status: IncidenceStatus,
     val timestamp: Long,

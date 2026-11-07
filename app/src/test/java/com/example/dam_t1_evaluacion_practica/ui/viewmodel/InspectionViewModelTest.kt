@@ -1,6 +1,6 @@
 package com.example.dam_t1_evaluacion_practica.ui.viewmodel
 
-import com.example.dam_t1_evaluacion_practica.data.repository.InspectionRepository
+import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 import com.example.dam_t1_evaluacion_practica.domain.model.ChecklistItem
 import com.example.dam_t1_evaluacion_practica.domain.model.CriticalityLevel
 import com.example.dam_t1_evaluacion_practica.domain.model.IncidenceStatus

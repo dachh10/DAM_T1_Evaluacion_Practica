@@ -11,14 +11,30 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface InspectionDao {
-    @Query("SELECT * FROM inspections ORDER BY timestamp DESC")
+
+    @Query("SELECT * FROM inspections WHERE deleted = 0 ORDER BY timestamp DESC")
     fun getAllInspections(): Flow<List<InspectionEntity>>
 
-    @Query("SELECT * FROM inspections WHERE LOWER(userEmail) = LOWER(:userEmail) ORDER BY timestamp DESC")
+    @Query(
+        "SELECT * FROM inspections WHERE deleted = 0 AND LOWER(userEmail) = LOWER(:userEmail) " +
+            "ORDER BY timestamp DESC"
+    )
     fun getInspectionsByUser(userEmail: String): Flow<List<InspectionEntity>>
 
-    @Query("SELECT * FROM inspections WHERE folio = :folio LIMIT 1")
+    @Query("SELECT * FROM inspections WHERE deleted = 0 AND folio = :folio LIMIT 1")
     fun getInspectionByFolio(folio: String): Flow<InspectionEntity?>
+
+    @Query("SELECT * FROM inspections WHERE deleted = 0 AND inspectionId = :inspectionId LIMIT 1")
+    fun getInspectionById(inspectionId: String): Flow<InspectionEntity?>
+
+    @Query(
+        "SELECT * FROM inspections WHERE deleted = 0 AND ownerUid = :ownerUid " +
+            "ORDER BY updatedAt DESC"
+    )
+    fun getInspectionsByOwner(ownerUid: String): Flow<List<InspectionEntity>>
+
+    @Query("SELECT * FROM inspections WHERE inspectionId = :inspectionId LIMIT 1")
+    suspend fun findInspectionById(inspectionId: String): InspectionEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertInspection(inspection: InspectionEntity): Long

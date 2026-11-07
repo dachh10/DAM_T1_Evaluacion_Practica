@@ -2,7 +2,7 @@ package com.example.dam_t1_evaluacion_practica.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.example.dam_t1_evaluacion_practica.data.repository.InspectionRepository
+import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 
 class InspectionViewModelFactory(
     private val repository: InspectionRepository

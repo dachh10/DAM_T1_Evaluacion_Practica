@@ -16,11 +16,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModelProvider
-import com.example.dam_t1_evaluacion_practica.data.local.AppDatabase
 import com.example.dam_t1_evaluacion_practica.data.local.SampleData
-import com.example.dam_t1_evaluacion_practica.data.repository.InspectionRepository
 import com.example.dam_t1_evaluacion_practica.domain.model.ChecklistItem
 import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionRecord
+import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 import com.example.dam_t1_evaluacion_practica.ui.components.MainTab
 import com.example.dam_t1_evaluacion_practica.ui.screens.ChecklistModuleScreen
 import com.example.dam_t1_evaluacion_practica.ui.screens.DashboardScreen
@@ -59,8 +58,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val database = AppDatabase.getDatabase(applicationContext)
-        repository = InspectionRepository(database.inspectionDao(), database.incidenceDao(), database.userDao())
+        val container = (application as SecurityInspectionsApp).container
+        repository = container.inspection
         val factory = InspectionViewModelFactory(repository)
         viewModel = ViewModelProvider(this, factory)[InspectionViewModel::class.java]
 

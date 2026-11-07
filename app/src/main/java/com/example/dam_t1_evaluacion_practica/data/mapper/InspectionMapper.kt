@@ -8,13 +8,22 @@ import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionReco
 import com.example.dam_t1_evaluacion_practica.domain.model.ModuleCompletion
 import com.example.dam_t1_evaluacion_practica.domain.model.Normativ
 import com.example.dam_t1_evaluacion_practica.domain.model.SessionFinding
+import com.example.dam_t1_evaluacion_practica.domain.model.SyncState
 import org.json.JSONArray
 import org.json.JSONObject
 
 fun InspectionEntity.toDomainModel(): InspectionSessionRecord {
     return InspectionSessionRecord(
         folio = folio,
+        inspectionId = inspectionId,
         userEmail = userEmail,
+        ownerUid = ownerUid,
+        syncState = try {
+            SyncState.valueOf(syncState)
+        } catch (e: Exception) {
+            SyncState.LOCAL_ONLY
+        },
+        updatedAt = updatedAt,
         companyName = companyName,
         zoneName = zoneName,
         auditType = auditType,
@@ -40,14 +49,17 @@ fun InspectionEntity.toDomainModel(): InspectionSessionRecord {
 
 fun InspectionSessionRecord.toEntity(): InspectionEntity {
     return InspectionEntity(
+        inspectionId = inspectionId,
         folio = folio,
         userEmail = userEmail,
+        ownerUid = ownerUid,
         companyName = companyName,
         zoneName = zoneName,
         auditType = auditType,
         inspectorName = inspectorName,
         inspectorCedula = inspectorCedula,
         timestamp = timestamp,
+        updatedAt = updatedAt,
         overallScore = overallScore,
         criticalStop = criticalStop,
         reinspectionDue = reinspectionDue,
@@ -57,7 +69,8 @@ fun InspectionSessionRecord.toEntity(): InspectionEntity {
         longitude = longitude,
         modulesJson = modulesToJson(modules),
         findingsJson = findingsToJson(findings),
-        normCodesJson = normCodesToJson(normCodes)
+        normCodesJson = normCodesToJson(normCodes),
+        syncState = syncState.name
     )
 }
 

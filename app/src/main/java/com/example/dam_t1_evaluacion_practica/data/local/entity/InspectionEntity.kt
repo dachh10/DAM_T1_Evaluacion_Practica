@@ -5,14 +5,18 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "inspections")
 data class InspectionEntity(
-    @PrimaryKey val folio: String,
+    @PrimaryKey val inspectionId: String,
+    val folio: String,
     val userEmail: String = "",
+    val ownerUid: String = "",
     val companyName: String,
     val zoneName: String,
     val auditType: String,
     val inspectorName: String,
     val inspectorCedula: String,
     val timestamp: Long,
+    val updatedAt: Long,
+    val lastSyncedAt: Long? = null,
     val overallScore: Int,
     val criticalStop: Boolean,
     val reinspectionDue: Boolean,
@@ -22,5 +26,7 @@ data class InspectionEntity(
     val longitude: Double?,
     val modulesJson: String,
     val findingsJson: String,
-    val normCodesJson: String
+    val normCodesJson: String,
+    val syncState: String = "LOCAL_ONLY",
+    val deleted: Boolean = false
 )

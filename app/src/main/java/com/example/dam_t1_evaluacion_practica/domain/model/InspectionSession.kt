@@ -43,9 +43,8 @@ data class SessionFinding(
  */
 data class InspectionSessionRecord(
     val folio: String,
-    // Cloud identity; the mapper supplies the real value. The default keeps the
-    // pre-existing construction sites compiling until the local mapper is updated.
-    val inspectionId: String = "",
+    // Cloud identity assigned at session start; folio stays display-only.
+    val inspectionId: String,
     val userEmail: String = "",
     val companyName: String,
     val zoneName: String,
