@@ -74,13 +74,13 @@ fun InspectionSessionRecord.toEntity(): InspectionEntity {
     )
 }
 
-private fun normCodesToJson(codes: List<String>): String {
+fun normCodesToJson(codes: List<String>): String {
     val array = JSONArray()
     codes.forEach { array.put(it) }
     return array.toString()
 }
 
-private fun parseNormCodesJson(json: String): List<String> {
+fun parseNormCodesJson(json: String): List<String> {
     if (json.isBlank()) return emptyList()
     val list = mutableListOf<String>()
     return try {
@@ -94,7 +94,7 @@ private fun parseNormCodesJson(json: String): List<String> {
     }
 }
 
-private fun findingsToJson(findings: List<SessionFinding>): String {
+fun findingsToJson(findings: List<SessionFinding>): String {
     val array = JSONArray()
     findings.forEach { f ->
         val obj = JSONObject().apply {
@@ -114,13 +114,41 @@ private fun findingsToJson(findings: List<SessionFinding>): String {
     return array.toString()
 }
 
-private fun parseFindingsJson(json: String): List<SessionFinding> {
+/**
+ * Serializa hallazgos para el documento remoto (Firestore). Una referencia local
+ * `content://` nunca sube a la nube: se escribe como `null`. Una URL `https://` ya
+ * subida se conserva tal cual.
+ */
+internal fun findingsToRemoteJson(findings: List<SessionFinding>): String {
+    val array = JSONArray()
+    findings.forEach { f ->
+        val obj = JSONObject().apply {
+            put("itemId", f.itemId)
+            put("itemDescription", f.itemDescription)
+            put("normCode", f.normCode)
+            put("criticalityLevel", f.criticalityLevel.name)
+            put("isNA", f.isNA)
+            put("notes", f.notes ?: "")
+            val remotePhotoUri = if (f.photoUri?.startsWith("content://") == true) null else f.photoUri
+            put("photoUri", remotePhotoUri ?: JSONObject.NULL)
+            put("timestamp", f.timestamp)
+            if (f.latitude != null) put("latitude", f.latitude)
+            if (f.longitude != null) put("longitude", f.longitude)
+        }
+        array.put(obj)
+    }
+    return array.toString()
+}
+
+fun parseFindingsJson(json: String): List<SessionFinding> {
     if (json.isBlank()) return emptyList()
     val list = mutableListOf<SessionFinding>()
     return try {
         val array = JSONArray(json)
         for (i in 0 until array.length()) {
             val obj = array.getJSONObject(i)
+            val photoUriVal = obj.opt("photoUri")
+            val photoUri = if (photoUriVal == null || photoUriVal == JSONObject.NULL) null else (photoUriVal as? String)
             list.add(
                 SessionFinding(
                     itemId = obj.optString("itemId"),
@@ -133,7 +161,7 @@ private fun parseFindingsJson(json: String): List<SessionFinding> {
                     },
                     isNA = obj.optBoolean("isNA", false),
                     notes = obj.optString("notes").ifBlank { null },
-                    photoUri = obj.optString("photoUri").ifBlank { null },
+                    photoUri = photoUri,
                     timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
                     latitude = if (obj.has("latitude")) obj.optDouble("latitude") else null,
                     longitude = if (obj.has("longitude")) obj.optDouble("longitude") else null
@@ -146,7 +174,7 @@ private fun parseFindingsJson(json: String): List<SessionFinding> {
     }
 }
 
-private fun modulesToJson(modules: List<ModuleCompletion>): String {
+fun modulesToJson(modules: List<ModuleCompletion>): String {
     val array = JSONArray()
     modules.forEach { m ->
         val obj = JSONObject().apply {
@@ -184,7 +212,7 @@ private fun modulesToJson(modules: List<ModuleCompletion>): String {
     return array.toString()
 }
 
-private fun parseModulesJson(json: String): List<ModuleCompletion> {
+fun parseModulesJson(json: String): List<ModuleCompletion> {
     if (json.isBlank()) return emptyList()
     val list = mutableListOf<ModuleCompletion>()
     return try {
