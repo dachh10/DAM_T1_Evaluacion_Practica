@@ -35,8 +35,8 @@ Change: `firebase-cloud-persistence` · Store: `openspec` · Strict TDD · Revie
 
 ## Phase AUTH — Firebase Email/Password
 
-- [ ] AUTH-1 Write the failing test first in `test/domain/validation/AuthValidatorTest.kt` (invalid `"correo"`, 6-char boundary, register-vs-login asymmetry); then implement `main/domain/validation/AuthValidator.kt` until green.
-- [ ] AUTH-2 Write the failing test first in `test/data/remote/auth/AuthErrorMapperTest.kt` (full `errorCode` → `AuthError` table, unmapped → `UNKNOWN`); then implement `main/data/remote/auth/FirebaseAuthDataSource.kt` with a local `awaitTask()` bridge until green.
+- [x] AUTH-1 Write the failing test first in `test/domain/validation/AuthValidatorTest.kt` (invalid `"correo"`, 6-char boundary, register-vs-login asymmetry); then implement `main/domain/validation/AuthValidator.kt` until green.
+- [x] AUTH-2 Write the failing test first in `test/data/remote/auth/AuthErrorMapperTest.kt` (full `errorCode` → `AuthError` table, unmapped → `UNKNOWN`); then implement `main/data/remote/auth/FirebaseAuthDataSource.kt` with a local `awaitTask()` bridge until green.
 - [ ] AUTH-3 Write the failing test first in `test/data/remote/mapper/ProfileRemoteMapperTest.kt` (round-trip, no credential key); then implement `main/data/remote/mapper/ProfileRemoteMapper.kt` and `main/data/repository/FirebaseAuthRepository.kt` (`session` callbackFlow, `cachedProfile`, `ensureProfile`).
 - [ ] AUTH-4 Write the failing test first in `test/ui/viewmodel/InspectionViewModelAuthTest.kt` (`AuthException` maps to the existing Spanish message, no SDK code); then update `main/ui/viewmodel/InspectionViewModel.kt` and remove the demo prefill in `main/ui/screens/LoginScreen.kt`.
 - [ ] AUTH-5 Write the failing test first in `test/ui/viewmodel/InspectionViewModelSessionTest.kt` (restore mirrors `login`: user set, inspections observed); then add `restoreSession` in `main/ui/viewmodel/InspectionViewModel.kt` and auth-aware navigation in `main/MainActivity.kt`; fill `AppContainer.auth`.

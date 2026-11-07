@@ -215,3 +215,65 @@ section.
 - Room 2.8.x deprecates the no-arg `fallbackToDestructiveMigration()`; still functional and intentional
   for the clean start, revisit if migrations become real.
 
+
+---
+
+# Apply Progress: Slice 3 (AUTH-1..2) — Validator and error mapping
+
+Change: `firebase-cloud-persistence` · Store: `openspec` · Slice 3 of 12 (PR 4 in the forecast) · Mode: Strict TDD
+Status: **COMPLETE** — AUTH-1 and AUTH-2 are green. Purely additive: 4 new files, no existing source modified, 60/60 tests pass and `assembleDebug` succeeds.
+
+## Slice boundary
+
+Start: `a7aca1b` (`feat(s1b): migrate room to v3 and extract repository interface`), branch
+`feature/firebase-cloud-persistence`. End: `AuthValidator` and the auth error-mapping seam exist and are
+unit-tested; the data source can sign in/register/observe a session. `FirebaseAuthRepository`
+(AUTH-3), the ViewModel/login screen (AUTH-4), session restore and navigation (AUTH-5) remain pending.
+
+## What changed
+
+| File | Action | What was done |
+|---|---|---|
+| `test/domain/validation/AuthValidatorTest.kt` | Created | 11 cases: malformed `"correo"`, email with spaces, valid email, 5/6/0-char password boundary, login-vs-registration asymmetry (`"pass"` passes login, same input fails registration). |
+| `main/domain/validation/AuthValidator.kt` | Created | Pure object: `MIN_PASSWORD_LENGTH = 6`, `isValidEmail`, `validateLogin`, `validateRegistration`; returns `AuthError?` (null = sendable). No `android.*` imports. |
+| `test/data/remote/auth/AuthErrorMapperTest.kt` | Created | 7 cases locking the full design section 9 table plus unmapped/null/blank -> `UNKNOWN`. |
+| `main/data/remote/auth/AuthErrorMapper.kt` | Created | Pure `String? -> AuthError` mapper so the table is JVM-testable without constructing `FirebaseAuthException`. |
+| `main/data/remote/auth/FirebaseAuthDataSource.kt` | Created | `FirebaseAuth` adapter: `session` `callbackFlow` over `addAuthStateListener`, `currentUid`, `signIn`, `register`, `signOut`, local `awaitTask()` via `suspendCancellableCoroutine`, Firebase failures translated to `AuthException`. |
+
+## Deviations from design / task text
+
+1. **`AuthErrorMapper.kt` is a new file separate from `FirebaseAuthDataSource.kt`.** AUTH-2 names
+   `AuthErrorMapperTest.kt` as the test file, so the mapper is the test target; splitting it keeps the
+   test free of any `FirebaseAuthDataSource` class load and satisfies design section 9's "raw SDK
+   types/codes never leave `data/remote/auth`". `FirebaseAuthDataSource` delegates to it.
+2. **The data source does not write `users/{uid}`.** Design section 9's registration sequence
+   (create user -> write profile -> cache) is split: AUTH-2 owns the auth adapter, AUTH-3's
+   `FirebaseAuthRepository` owns the Firestore profile write and local cache. `register(email, password)`
+   therefore returns only the `AuthSession`; `name`/`cedula` never reach the auth SDK.
+3. **Invalid email maps to `INVALID_CREDENTIALS`.** Design's `AuthError` enum has no `INVALID_EMAIL`
+   member and the section 9 table already routes `ERROR_INVALID_EMAIL` to `INVALID_CREDENTIALS`;
+   the validator uses the same domain error instead of inventing a code.
+4. **`validateLogin` does not check password length.** Exactly as design section 2 requires
+   (`login("test@seguridad.mx", "pass")` must keep succeeding); the 6-character rule is
+   registration-only.
+
+## TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| AUTH-1 | `test/domain/validation/AuthValidatorTest.kt` | Unit (pure) | ? 42/42 baseline | ? `compileDebugUnitTestKotlin` failed: `Unresolved reference 'AuthValidator'` (12 sites) | ? `AuthValidatorTest` 11 tests, 0 failures | ? 11 cases across email, 5/6/0 boundary and register/login asymmetry | ? Regex/extracted `validateEmail`; tests stayed green |
+| AUTH-2 | `test/data/remote/auth/AuthErrorMapperTest.kt` | Unit (pure) | ? 42/42 baseline + AUTH-1 green | ? `compileDebugUnitTestKotlin` failed: unresolved `AuthErrorMapper` | ? `AuthErrorMapperTest` 7 tests, 0 failures | ? Every row of the table plus unmapped/null/blank | ? `when` table is the final shape; data source delegates through one `awaitAuthTask` helper |
+
+## Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test commands and exact result | AUTH-1: `:app:testDebugUnitTest --tests "...AuthValidatorTest"` -> BUILD SUCCESSFUL, XML 11 tests / 0 failures / 0 errors / 0 skipped. AUTH-2: `--tests "...AuthErrorMapperTest"` -> BUILD SUCCESSFUL, XML 7 tests / 0 failures / 0 errors / 0 skipped. |
+| Runtime harness | No runtime boundary exists for these units: the validator is a pure object and the mapper is a pure string table. `:app:assembleDebug` -> **BUILD SUCCESSFUL in 9s** (9.8s wall), proving the Firebase-typed data source compiles against `firebase-auth` 24.0.1. |
+| Full regression | `:app:testDebugUnitTest` -> BUILD SUCCESSFUL; XML totals from `app/build/test-results/testDebugUnitTest/*.xml`: `ExampleUnitTest` 1, `InspectionViewModelTest` 41, `AuthValidatorTest` 11, `AuthErrorMapperTest` 7 = **60 tests, 0 failures, 0 errors, 0 skipped**. |
+| Rollback boundary | Delete the 5 created files listed above (2 main, 2 test, 1 mapper) and revert the AUTH-1/AUTH-2 checkboxes plus this section. Nothing existing imports them yet, so rollback removes no unrelated work. `ChecklistModuleScreen.kt` was not touched. |
+
+## Remaining in Phase AUTH
+
+AUTH-3 (`ProfileRemoteMapper` + `FirebaseAuthRepository`), AUTH-4 (ViewModel error mapping + `LoginScreen`
+prefill removal), AUTH-5 (`restoreSession` + auth-aware navigation + `AppContainer.auth`).
