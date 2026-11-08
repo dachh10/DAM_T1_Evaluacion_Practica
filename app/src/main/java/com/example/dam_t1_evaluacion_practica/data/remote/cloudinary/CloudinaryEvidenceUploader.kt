@@ -28,16 +28,40 @@ class CloudinaryEvidenceUploader private constructor(
         @Volatile
         private var INSTANCE: CloudinaryEvidenceUploader? = null
 
+        @Volatile
+        private var appContext: Context? = null
+
+        @Volatile
+        private var mediaManagerReady = false
+
+        /**
+         * Prepares the Cloudinary SDK. Idempotent and cheap: it only keeps the application
+         * context. The real `MediaManager.init` happens the first time an uploader is
+         * needed, off the main thread, so app startup is never blocked by it.
+         */
+        fun initialize(context: Context) {
+            appContext = context.applicationContext
+        }
+
         fun getInstance(context: Context): CloudinaryEvidenceUploader {
+            if (appContext == null) initialize(context)
             return INSTANCE ?: synchronized(this) {
-                val instance = CloudinaryEvidenceUploader(MediaManager.get())
-                INSTANCE = instance
-                instance
+                INSTANCE ?: CloudinaryEvidenceUploader(mediaManager()).also { INSTANCE = it }
             }
         }
 
-        fun initialize(context: Context) {
-            MediaManager.init(context)
+        private fun mediaManager(): MediaManager {
+            if (!mediaManagerReady) {
+                synchronized(this) {
+                    if (!mediaManagerReady) {
+                        MediaManager.init(
+                            appContext ?: error("CloudinaryEvidenceUploader.initialize was never called")
+                        )
+                        mediaManagerReady = true
+                    }
+                }
+            }
+            return MediaManager.get()
         }
 
         fun buildPublicId(evidence: Evidence): String =

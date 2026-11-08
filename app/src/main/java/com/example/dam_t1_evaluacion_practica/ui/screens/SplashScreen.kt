@@ -67,9 +67,7 @@ import com.example.dam_t1_evaluacion_practica.ui.theme.SurfaceContainerHighest
 import kotlinx.coroutines.delay
 
 @Composable
-fun SplashScreen(
-    onSplashFinished: () -> Unit
-) {
+fun SplashScreen() {
     val statusMessages = remember {
         listOf(
             "Sincronizando catálogos de normas y firmas offline...",
@@ -101,14 +99,12 @@ fun SplashScreen(
     )
 
     LaunchedEffect(Unit) {
-        delay(1400)
+        delay(700)
         currentStep = 1
-        delay(1400)
+        delay(700)
         currentStep = 2
-        delay(1400)
+        delay(700)
         currentStep = 3
-        delay(1200)
-        onSplashFinished()
     }
 
     Box(

@@ -31,7 +31,8 @@ interface SyncScheduler {
  */
 class WorkManagerSyncScheduler(private val context: Context) : SyncScheduler {
 
-    private val workManager = WorkManager.getInstance(context)
+    // Resolved on first enqueue so app startup never pays for WorkManager's own init.
+    private val workManager by lazy { WorkManager.getInstance(context.applicationContext) }
 
     override fun enqueueInspectionSync(inspectionId: String) {
         val request = OneTimeWorkRequestBuilder<InspectionSyncWorker>()

@@ -378,6 +378,23 @@ class InspectionViewModelTest {
         assertNull(record.scheduledReinspectionAt)
     }
 
+    @Test
+    fun `saveDictamen stamps the owner uid of the authenticated session`() {
+        // The Firestore rules authorize writes by ownerUid == request.auth.uid, so the
+        // saved record must carry the provider uid, never an empty owner.
+        viewModel.restoreSession(
+            User(email = "inspector@seguridad.mx", name = "Ana", cedula = "1234", uid = "uid-abc")
+        )
+        val items = checklistSevenHigh()
+        viewModel.initChecklist(items)
+        items.forEach { viewModel.submitAnswer(it, isCompliant = true) }
+        viewModel.finishModule("Modulo EPP", items)
+
+        val record = viewModel.saveDictamen()
+
+        assertEquals("uid-abc", record.ownerUid)
+    }
+
     // --- score progression ---
 
     @Test
@@ -704,6 +721,10 @@ class InspectionViewModelTest {
         val record = viewModel.saveDictamen()
         assertEquals("newuser@seguridad.mx", record.userEmail)
         assertEquals("Ing. Nuevo Inspector", record.inspectorName)
+        // The uid returned by the provider must be adopted, and the saved record must be
+        // owner-scoped: Firestore rules reject writes whose ownerUid is not the caller.
+        assertEquals("test-uid", user?.uid)
+        assertEquals("test-uid", record.ownerUid)
     }
 
     @Test

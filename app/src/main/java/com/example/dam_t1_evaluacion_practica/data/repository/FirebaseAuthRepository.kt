@@ -57,6 +57,9 @@ class FirebaseAuthRepository(
     override suspend fun cachedProfile(uid: String): User? =
         profileDao.getCachedProfile(uid)?.toDomainModel()
 
+    override suspend fun cachedProfileByEmail(email: String): User? =
+        profileDao.getByEmail(email)?.toDomainModel()
+
     /**
      * Guarantees a cached profile for [uid] and returns it.
      *

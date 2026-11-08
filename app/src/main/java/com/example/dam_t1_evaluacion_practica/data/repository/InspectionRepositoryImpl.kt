@@ -83,7 +83,7 @@ class InspectionRepositoryImpl(
         }
 
     override suspend fun getUserByEmail(email: String): User? =
-        authRepository.cachedProfile(email)
+        authRepository.cachedProfileByEmail(email)
 
     override suspend fun login(email: String, password: String): User? =
         authRepository.signIn(email, password)

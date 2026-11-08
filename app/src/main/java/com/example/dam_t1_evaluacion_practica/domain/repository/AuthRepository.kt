@@ -24,4 +24,7 @@ interface AuthRepository {
     fun observeProfile(uid: String): Flow<User?>
 
     suspend fun cachedProfile(uid: String): User?
+
+    /** Looks up a cached profile by e-mail, case-insensitively. */
+    suspend fun cachedProfileByEmail(email: String): User?
 }

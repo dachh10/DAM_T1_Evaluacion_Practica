@@ -230,9 +230,11 @@ class InspectionViewModel(
                     name = trimmedName,
                     cedula = if (trimmedCedula.isNotBlank()) trimmedCedula else "STPS-${System.currentTimeMillis().toString().takeLast(6)}"
                 )
-                repository.registerUser(newUser, trimmedPassword)
+                val created = repository.registerUser(newUser, trimmedPassword)
 
-                applyAuthenticatedUser(newUser)
+                // The repository returns the authoritative profile (Firebase uid included);
+                // the local placeholder has no uid and would break owner-scoped sync.
+                applyAuthenticatedUser(created)
                 onSuccess()
             } catch (auth: AuthException) {
                 val msg = authErrorMessage(auth.error, "Error al registrar cuenta")
@@ -552,7 +554,9 @@ class InspectionViewModel(
             normCodes = s.sessionModules.flatMap { it.normCodes }.distinct(),
             latitude = locatedFinding?.latitude ?: DEFAULT_SITE_LATITUDE,
             longitude = locatedFinding?.longitude ?: DEFAULT_SITE_LONGITUDE,
-            status = if (criticalStop || reinspectionDue) IncidenceStatus.OPEN else IncidenceStatus.CLOSED
+            status = if (criticalStop || reinspectionDue) IncidenceStatus.OPEN else IncidenceStatus.CLOSED,
+            // Owner identity for Firestore rules and owner-scoped queries.
+            ownerUid = user?.uid.orEmpty()
         )
 
         // Update UI state immediately for responsive UI and test consistency

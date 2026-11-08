@@ -24,7 +24,6 @@ import com.example.dam_t1_evaluacion_practica.domain.model.ChecklistItem
 import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionRecord
 import com.example.dam_t1_evaluacion_practica.domain.model.User
 import com.example.dam_t1_evaluacion_practica.domain.repository.AuthRepository
-import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
 import com.example.dam_t1_evaluacion_practica.ui.components.MainTab
 import com.example.dam_t1_evaluacion_practica.ui.screens.ChecklistModuleScreen
 import com.example.dam_t1_evaluacion_practica.ui.screens.DashboardScreen
@@ -40,10 +39,12 @@ import com.example.dam_t1_evaluacion_practica.ui.screens.SplashScreen
 import com.example.dam_t1_evaluacion_practica.ui.theme.DAM_T1_Evaluacion_PracticaTheme
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModel
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModelFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed class Screen {
-    data object Splash : Screen()
     data object Login : Screen()
     data object Dashboard : Screen()
     data object NewInspection : Screen()
@@ -57,19 +58,11 @@ sealed class Screen {
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var viewModel: InspectionViewModel
-    private lateinit var repository: InspectionRepository
-    private lateinit var authRepository: AuthRepository
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val container = (application as SecurityInspectionsApp).container
-        repository = container.inspection
-        authRepository = container.auth
-        val factory = InspectionViewModelFactory(repository)
-        viewModel = ViewModelProvider(this, factory)[InspectionViewModel::class.java]
+        val app = application as SecurityInspectionsApp
 
         setContent {
             DAM_T1_Evaluacion_PracticaTheme {
@@ -77,17 +70,56 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    InspectionApp(viewModel = viewModel, authRepository = authRepository)
+                    AppRoot(app)
                 }
             }
         }
     }
 }
 
+/**
+ * Shows the splash art on the very first frame while the composition root is built on a
+ * background dispatcher, then hands over to the app. The container is never built on the
+ * main thread, so the first frame is never delayed by Room, Firebase or WorkManager init.
+ */
+@Composable
+private fun AppRoot(app: SecurityInspectionsApp) {
+    var container by remember { mutableStateOf<AppContainer?>(null) }
+    var minimumSplashElapsed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        container = withContext(Dispatchers.IO) { app.container }
+    }
+    LaunchedEffect(Unit) {
+        delay(MINIMUM_SPLASH_MS)
+        minimumSplashElapsed = true
+    }
+
+    val ready = container
+    if (ready == null || !minimumSplashElapsed) {
+        SplashScreen()
+    } else {
+        InspectionApp(container = ready)
+    }
+}
+
+/** Minimum time the branded splash stays on screen so it does not flash on fast devices. */
+private const val MINIMUM_SPLASH_MS = 900L
+
+@Composable
+private fun InspectionApp(container: AppContainer) {
+    val activity = LocalContext.current as ComponentActivity
+    val viewModel = remember(container) {
+        val factory = InspectionViewModelFactory(container.inspection)
+        ViewModelProvider(activity, factory)[InspectionViewModel::class.java]
+    }
+    val authRepository = container.auth
+    InspectionApp(viewModel = viewModel, authRepository = authRepository)
+}
+
 @Composable
 fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository) {
-    var currentScreen by remember { mutableStateOf<Screen>(Screen.Splash) }
-    var splashFinished by remember { mutableStateOf(false) }
+    var currentScreen by remember { mutableStateOf<Screen>(Screen.Login) }
     var session by remember { mutableStateOf<AuthSession?>(null) }
     var sessionResolved by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -101,33 +133,26 @@ fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository
 
     // Auth-aware navigation (design section 9): a restored session reopens the
     // dashboard, and losing the session returns to the login screen.
-    LaunchedEffect(session, sessionResolved, splashFinished) {
-        if (!sessionResolved || !splashFinished) return@LaunchedEffect
+    LaunchedEffect(session, sessionResolved) {
+        if (!sessionResolved) return@LaunchedEffect
         val active = session
         if (active == null) {
             // The provider session is gone: the local identity must go with it.
-            viewModel.logout()
-            if (currentScreen.isProtected()) currentScreen = Screen.Login
+            if (viewModel.uiState.value.currentUser != null) viewModel.logout()
+            if (currentScreen != Screen.Login) currentScreen = Screen.Login
             return@LaunchedEffect
         }
         // The profile comes from the local cache; an empty cache still opens the app.
         val profile = authRepository.cachedProfile(active.uid)
             ?: User(email = active.email, name = "", cedula = "", uid = active.uid)
         viewModel.restoreSession(profile)
-        // The splash is over: a restored session goes straight to the dashboard.
-        if (currentScreen == Screen.Splash || currentScreen == Screen.Login) {
+        // A restored session goes straight to the dashboard.
+        if (currentScreen == Screen.Login) {
             currentScreen = Screen.Dashboard
         }
     }
 
     when (val screen = currentScreen) {
-        is Screen.Splash -> {
-            SplashScreen(
-                onSplashFinished = {
-                    splashFinished = true
-                }
-            )
-        }
         is Screen.Login -> {
             LoginScreen(
                 viewModel = viewModel,
@@ -294,8 +319,3 @@ private fun itemsFor(module: InspectionModule): List<ChecklistItem> = when (modu
     InspectionModule.FACILITIES -> SampleData.environmentItems
 }
 
-/** Screens that require an authenticated session. */
-private fun Screen.isProtected(): Boolean = when (this) {
-    Screen.Splash, Screen.Login -> false
-    else -> true
-}
