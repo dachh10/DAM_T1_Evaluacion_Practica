@@ -67,8 +67,8 @@ Change: `firebase-cloud-persistence` · Store: `openspec` · Strict TDD · Revie
 
 ## Phase RULES — Emulator Suite, rules, indexes
 
-- [ ] RULES-1 Create `firestore.rules` (design §12 verbatim), `firestore.indexes.json` (ownerUid ASC + updatedAt DESC) and `firebase.json` wiring rules/indexes plus the Auth and Firestore emulators.
-- [ ] RULES-2 Emulator setup: add the androidTest emulator dependencies to `app/build.gradle.kts` and create `androidTest/FirebaseEmulatorRule.kt` (points Auth/Firestore at `10.0.2.2`).
+- [x] RULES-1 Create `firestore.rules` (design §12 verbatim), `firestore.indexes.json` (ownerUid ASC + updatedAt DESC) and `firebase.json` wiring rules/indexes plus the Auth and Firestore emulators.
+- [x] RULES-2 Emulator setup: add the androidTest emulator dependencies to `app/build.gradle.kts` and create `androidTest/FirebaseEmulatorRule.kt` (points Auth/Firestore at `10.0.2.2`).
 - [ ] RULES-3 Write the failing test first in `androidTest/FirestoreRulesTest.kt` (owner read/create/update; cross-uid denied; unknown parent denied; `overallScore` outside 0..100 denied; incidence requires parent owner); run against the emulator until green.
 - [ ] RULES-4 Write the failing test first in `androidTest/AuthEmulatorTest.kt` (register, wrong password → `INVALID_CREDENTIALS`, duplicate → `EMAIL_ALREADY_IN_USE`); prove with `Runner :app:connectedDebugAndroidTest`.
 - [ ] RULES-5 Assert the merged manifest declares `INTERNET` at `app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml` (read-only) and record the two-device, offline-photo, offline-relaunch and capture-compression manual results in the PR description.

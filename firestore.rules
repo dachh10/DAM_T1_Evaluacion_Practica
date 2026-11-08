@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==========================================
+    // INSPECCIONES
+    // ==========================================
+    match /inspections/{inspectionId} {
+      // Solo el dueño puede leer/escribir su inspección
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.ownerUid;
+
+      // Al crear: ownerUid debe ser el uid del usuario autenticado
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.ownerUid
+        && request.resource.data.ownerUid != null
+        && request.resource.data.ownerUid != "";
+
+      // Al actualizar: solo dueño, y overallScore debe estar en 0..100
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.ownerUid
+        && request.resource.data.overallScore >= 0
+        && request.resource.data.overallScore <= 100;
+
+      // Al borrar: solo dueño
+      allow delete: if request.auth != null && request.auth.uid == resource.data.ownerUid;
+
+      // ==========================================
+      // INCIDENCIAS (subcolección)
+      // ==========================================
+      match /incidences/{incidenceId} {
+        // Solo el dueño de la inspección padre puede leer/escribir
+        allow read, write: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/inspections/$(inspectionId)).data.ownerUid;
+
+        // Al crear: checklistItemId, status, timestamp requeridos
+        allow create: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/inspections/$(inspectionId)).data.ownerUid
+          && request.resource.data.checklistItemId != null
+          && request.resource.data.status != null
+          && request.resource.data.timestamp != null;
+
+        // Al actualizar: solo dueño
+        allow update: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/inspections/$(inspectionId)).data.ownerUid;
+
+        // Al borrar: solo dueño
+        allow delete: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/inspections/$(inspectionId)).data.ownerUid;
+      }
+    }
+
+    // ==========================================
+    // USUARIOS (perfil público del inspector)
+    // ==========================================
+    match /users/{uid} {
+      // El usuario puede leer/escribir su propio perfil
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      // Al crear: email, displayName, cedula requeridos
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.email != null
+        && request.resource.data.displayName != null
+        && request.resource.data.cedula != null;
+    }
+  }
+}
