@@ -671,7 +671,12 @@ class InspectionViewModelTest {
     @Test
     fun `register new user persists account and isolates inspection scope`() = runTest {
         coEvery { repository.getUserByEmail("newuser@seguridad.mx") } returns null
-        coEvery { repository.registerUser(any(), any()) } returns 1L
+        coEvery { repository.registerUser(any(), any()) } returns User(
+            email = "newuser@seguridad.mx",
+            name = "Ing. Nuevo Inspector",
+            cedula = "STPS-9999",
+            uid = "test-uid"
+        )
         coEvery { repository.getInspectionsByUser("newuser@seguridad.mx") } returns flowOf(emptyList())
 
         var registered = false

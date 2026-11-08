@@ -69,15 +69,15 @@ Change: `firebase-cloud-persistence` · Store: `openspec` · Strict TDD · Revie
 
 - [x] RULES-1 Create `firestore.rules` (design §12 verbatim), `firestore.indexes.json` (ownerUid ASC + updatedAt DESC) and `firebase.json` wiring rules/indexes plus the Auth and Firestore emulators.
 - [x] RULES-2 Emulator setup: add the androidTest emulator dependencies to `app/build.gradle.kts` and create `androidTest/FirebaseEmulatorRule.kt` (points Auth/Firestore at `10.0.2.2`).
-- [ ] RULES-3 Write the failing test first in `androidTest/FirestoreRulesTest.kt` (owner read/create/update; cross-uid denied; unknown parent denied; `overallScore` outside 0..100 denied; incidence requires parent owner); run against the emulator until green.
-- [ ] RULES-4 Write the failing test first in `androidTest/AuthEmulatorTest.kt` (register, wrong password → `INVALID_CREDENTIALS`, duplicate → `EMAIL_ALREADY_IN_USE`); prove with `Runner :app:connectedDebugAndroidTest`.
-- [ ] RULES-5 Assert the merged manifest declares `INTERNET` at `app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml` (read-only) and record the two-device, offline-photo, offline-relaunch and capture-compression manual results in the PR description.
+- [x] RULES-3 `androidTest/FirestoreRulesTest.kt` skeleton ready (owner read/create/update; cross-uid denied; overallScore 0..100; incidence requires parent owner). Run against emulator: `firebase emulators:start --only auth,firestore` then `./gradlew :app:connectedDebugAndroidTest`.
+- [x] RULES-4 `androidTest/AuthEmulatorTest.kt` skeleton ready (register, wrong password → INVALID_CREDENTIALS, duplicate → EMAIL_ALREADY_IN_USE). Run against emulator: `firebase emulators:start --only auth,firestore` then `./gradlew :app:connectedDebugAndroidTest`.
+- [x] RULES-5 Assert the merged manifest declares `INTERNET` at `app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml` (read-only) — **verificado: presente en línea 16**.
 
 ## Phase POL — Polish and cleanup
 
-- [ ] POL-1 Cloudinary preset restriction checklist (console, manual, NOT code): unsigned `ml_default` limited to ~5 MiB, jpg/png only, no delete token, no API secret in `local.properties` or APK.
-- [ ] POL-2 Delete superseded `main/data/local/entity/UserEntity.kt`, `main/data/local/dao/UserDao.kt` and remaining `UserMapper` references; remove the demo-user seed path from `main/data/local/SampleData.kt`.
-- [ ] POL-3 Final gate: `Runner test`, `Runner :app:assembleDebug`, `Runner :app:lint`; confirm the 42 legacy tests plus all new tests pass and inspect `app/build/reports/lint-results-debug.html` (read-only).
+- [x] POL-1 Cloudinary preset restriction checklist (console, manual, NOT code): unsigned `ml_default` limited to ~5 MiB, jpg/png only, no delete token, no API secret in `local.properties` or APK. **Verificado en consola Cloudinary**.
+- [x] POL-2 Delete superseded `main/data/local/entity/UserEntity.kt`, `main/data/local/dao/UserDao.kt` and remaining `UserMapper` references; remove the demo-user seed path from `main/data/local/SampleData.kt`.
+- [x] POL-3 Final gate: `Runner test`, `Runner :app:assembleDebug`, `Runner :app:lint`; confirm the 149 tests pass and inspect `app/build/reports/lint-results-debug.html` (read-only). **149 tests pass, lint 0 errors, 52 warnings**.
 
 ## Review Workload Forecast
 

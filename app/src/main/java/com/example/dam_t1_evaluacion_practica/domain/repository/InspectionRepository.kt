@@ -33,7 +33,7 @@ interface InspectionRepository {
 
     suspend fun login(email: String, password: String): User?
 
-    suspend fun registerUser(user: User, password: String): Long
+    suspend fun registerUser(user: User, password: String): User
 
     /** Marks the inspection as a local tombstone and enqueues its remote deletion. */
     suspend fun deleteInspection(inspectionId: String)

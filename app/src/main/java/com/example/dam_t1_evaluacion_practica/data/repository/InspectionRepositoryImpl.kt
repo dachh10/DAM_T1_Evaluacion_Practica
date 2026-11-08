@@ -3,7 +3,6 @@ package com.example.dam_t1_evaluacion_practica.data.repository
 import com.example.dam_t1_evaluacion_practica.data.local.dao.EvidenceDao
 import com.example.dam_t1_evaluacion_practica.data.local.dao.IncidenceDao
 import com.example.dam_t1_evaluacion_practica.data.local.dao.InspectionDao
-import com.example.dam_t1_evaluacion_practica.data.local.dao.UserDao
 import com.example.dam_t1_evaluacion_practica.data.local.entity.EvidenceEntity
 import com.example.dam_t1_evaluacion_practica.data.mapper.toDomainModel
 import com.example.dam_t1_evaluacion_practica.data.mapper.toEntity
@@ -19,6 +18,7 @@ import com.example.dam_t1_evaluacion_practica.domain.model.User
 import com.example.dam_t1_evaluacion_practica.data.sync.SyncCoordinator
 import com.example.dam_t1_evaluacion_practica.domain.repository.EvidenceRepository
 import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionRepository
+import com.example.dam_t1_evaluacion_practica.domain.repository.AuthRepository
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -28,11 +28,11 @@ import kotlinx.coroutines.withContext
 class InspectionRepositoryImpl(
     private val inspectionDao: InspectionDao,
     private val incidenceDao: IncidenceDao,
-    private val userDao: UserDao,
     private val evidenceDao: EvidenceDao,
     private val remote: RemoteInspectionDataSource,
     private val coordinator: SyncCoordinator,
-    private val evidenceRepository: EvidenceRepository
+    private val evidenceRepository: EvidenceRepository,
+    private val authRepository: AuthRepository
 ) : InspectionRepository {
 
     override fun getAllInspections(): Flow<List<InspectionSessionRecord>> =
@@ -83,19 +83,13 @@ class InspectionRepositoryImpl(
         }
 
     override suspend fun getUserByEmail(email: String): User? =
-        withContext(Dispatchers.IO) {
-            userDao.getUserByEmail(email)?.toDomainModel()
-        }
+        authRepository.cachedProfile(email)
 
     override suspend fun login(email: String, password: String): User? =
-        withContext(Dispatchers.IO) {
-            userDao.login(email, password)?.toDomainModel()
-        }
+        authRepository.signIn(email, password)
 
-    override suspend fun registerUser(user: User, password: String): Long =
-        withContext(Dispatchers.IO) {
-            userDao.insertUser(user.toEntity(password))
-        }
+    override suspend fun registerUser(user: User, password: String): User =
+        authRepository.register(user.name, user.email, user.cedula, password)
 
     override suspend fun deleteInspection(inspectionId: String) = withContext(Dispatchers.IO) {
         val entity = inspectionDao.findInspectionById(inspectionId) ?: return@withContext

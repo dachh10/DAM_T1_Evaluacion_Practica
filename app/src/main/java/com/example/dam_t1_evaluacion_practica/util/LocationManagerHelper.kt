@@ -1,6 +1,7 @@
 package com.example.dam_t1_evaluacion_practica.util
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
@@ -49,6 +50,7 @@ object LocationManagerHelper {
             return
         }
 
+        @SuppressLint("MissingPermission")
         val lastKnown = runCatching { locationManager.getLastKnownLocation(enabledProvider) }.getOrNull()
         if (lastKnown != null) {
             callback(lastKnown.latitude, lastKnown.longitude)
@@ -58,6 +60,7 @@ object LocationManagerHelper {
         requestSingleFix(locationManager, enabledProvider, callback)
     }
 
+    @SuppressLint("MissingPermission")
     private fun requestSingleFix(
         locationManager: LocationManager,
         provider: String,

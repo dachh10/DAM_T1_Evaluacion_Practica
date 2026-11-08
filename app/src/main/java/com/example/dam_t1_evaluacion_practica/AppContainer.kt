@@ -51,10 +51,10 @@ class AppContainer(context: Context) {
     val inspection: InspectionRepository = InspectionRepositoryImpl(
         inspectionDao = db.inspectionDao(),
         incidenceDao = db.incidenceDao(),
-        userDao = db.userDao(),
         evidenceDao = db.evidenceDao(),
         remote = remote,
         coordinator = coordinator,
-        evidenceRepository = evidence
+        evidenceRepository = evidence,
+        authRepository = auth
     )
 }
