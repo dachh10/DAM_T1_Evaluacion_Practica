@@ -57,6 +57,7 @@ import com.example.dam_t1_evaluacion_practica.R
 import com.example.dam_t1_evaluacion_practica.domain.model.ModuleCompletion
 import com.example.dam_t1_evaluacion_practica.domain.model.SessionFinding
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModel
+import com.example.dam_t1_evaluacion_practica.ui.components.EvidenceImage
 import com.example.dam_t1_evaluacion_practica.util.GalleryUtils
 import android.net.Uri
 import java.text.SimpleDateFormat
@@ -255,11 +256,7 @@ fun ResultsScreen(
                         )
                     }
                     items(uiState.sessionFindings, key = { it.itemId }) { finding ->
-                        FindingResultCard(finding = finding, photoLoader = {
-                            finding.photoUri?.let { uri ->
-                                GalleryUtils.loadBitmapFromUri(context, Uri.parse(uri))
-                            }
-                        })
+                        FindingResultCard(finding = finding)
                     }
                 }
 
@@ -455,11 +452,7 @@ private fun ModuleResultCard(module: ModuleCompletion) {
 }
 
 @Composable
-private fun FindingResultCard(
-    finding: SessionFinding,
-    photoLoader: () -> android.graphics.Bitmap?
-) {
-    val bitmap = remember(finding.photoUri) { photoLoader() }
+private fun FindingResultCard(finding: SessionFinding) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = SurfaceLowest,
@@ -533,15 +526,11 @@ private fun FindingResultCard(
                     color = OnSurfaceVariant
                 )
             }
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Evidencia fotográfica",
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                )
-            }
+            EvidenceImage(
+                url = finding.photoUri,
+                contentDescription = "Evidencia fotográfica",
+                size = 64.dp
+            )
         }
     }
 }

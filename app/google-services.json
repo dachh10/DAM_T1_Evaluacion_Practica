@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "319778339993",
+    "project_id": "seguridad-85edc",
+    "storage_bucket": "seguridad-85edc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:319778339993:android:e47932c04abf7bb38f8c08",
+        "android_client_info": {
+          "package_name": "com.example.dam_t1_evaluacion_practica"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDXRbh9p7ggQZcxKQkO6ij-hbQbWRSzyk0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

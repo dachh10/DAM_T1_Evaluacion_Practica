@@ -98,6 +98,9 @@ dependencies {
     // WorkManager: sync coordinator and evidence upload workers
     implementation(libs.androidx.work.runtime)
 
+    // OkHttp: remote image loading
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // Cloudinary: unsigned evidence uploads
     implementation(libs.cloudinary.android)
 
@@ -106,6 +109,7 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.androidx.work.testing)
     testImplementation("org.json:json:20231013")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

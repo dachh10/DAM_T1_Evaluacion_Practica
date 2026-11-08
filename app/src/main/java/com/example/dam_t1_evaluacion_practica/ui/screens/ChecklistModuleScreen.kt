@@ -114,10 +114,7 @@ fun ChecklistModuleScreen(
     var selectedNormativ by remember { mutableStateOf<Normativ?>(null) }
     val captureLocation = rememberLocationCapture()
 
-    // The Critical Stop dialog fires LIVE when a HIGH item is marked non-compliant
-    // without evidence yet (criticalStopTriggered flips true the moment the answer is
-    // submitted), and also after "Finalizar Módulo" evaluates the module score below 85.
-    // While answering, the dialog can only open on a real critical non-conformance.
+
     if (showCriticalDialog) {
         val moduleItemIds = remember(uiState.currentChecklist) {
             uiState.currentChecklist.map { it.id }.toSet()
@@ -280,9 +277,7 @@ fun ChecklistModuleScreen(
                         }
                         Button(
                             onClick = {
-                                // Finish the module first: this evaluates the stop rules against
-                                // the weighted score. Below 85 the Critical Stop dialog opens to
-                                // capture photo + GPS evidence; otherwise continue as usual.
+
                                 viewModel.finishModule(module.title, uiState.currentChecklist)
                                 if (viewModel.uiState.value.criticalStopTriggered) {
                                     dialogIsLive = false

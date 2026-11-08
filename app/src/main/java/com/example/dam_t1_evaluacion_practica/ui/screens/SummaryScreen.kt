@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dam_t1_evaluacion_practica.domain.model.Incidence
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModel
+import com.example.dam_t1_evaluacion_practica.ui.components.EvidenceImage
 import com.example.dam_t1_evaluacion_practica.util.GalleryUtils
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -206,16 +207,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, color:
 
 @Composable
 fun IncidenceItemCard(incidence: Incidence) {
-    val context = LocalContext.current
     val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(incidence.timestamp))
-
-    val bitmap = incidence.photoUri?.let { uriStr ->
-        try {
-            GalleryUtils.loadBitmapFromUri(context, Uri.parse(uriStr))
-        } catch (e: Exception) {
-            null
-        }
-    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -228,17 +220,12 @@ fun IncidenceItemCard(incidence: Incidence) {
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Evidencia",
-                    modifier = Modifier
-                        .size(54.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-            }
+            EvidenceImage(
+                url = incidence.photoUri,
+                contentDescription = "Evidencia",
+                size = 54.dp
+            )
+            Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(

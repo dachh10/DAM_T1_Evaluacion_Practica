@@ -3,6 +3,7 @@ package com.example.dam_t1_evaluacion_practica.util
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -15,6 +16,9 @@ import android.os.Environment
 import android.provider.MediaStore
 import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionRecord
 import com.example.dam_t1_evaluacion_practica.domain.model.SessionFinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,7 +51,8 @@ object InspectionPdfGenerator {
             style = Paint.Style.FILL
         }
 
-    fun generate(context: Context, record: InspectionSessionRecord): Uri? {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    suspend fun generate(context: Context, record: InspectionSessionRecord): Uri? {
         val doc = PdfDocument()
         var pageNum = 1
         var page = newPage(doc, pageNum)
@@ -180,7 +185,8 @@ object InspectionPdfGenerator {
         return startY + rowH + 4f
     }
 
-    private fun drawFinding(context: Context, canvas: Canvas, finding: SessionFinding, startY: Float): Float {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun drawFinding(context: Context, canvas: Canvas, finding: SessionFinding, startY: Float): Float {
         var y = startY
         val badgeColor = when (finding.criticalityLevel.name) {
             "HIGH"   -> COL_RED
@@ -198,31 +204,40 @@ object InspectionPdfGenerator {
         }
         y += 56f
         finding.photoUri?.takeIf { it.isNotBlank() }?.let { uriStr ->
-            try {
-                val uri = Uri.parse(uriStr)
-                val bitmap = if (uri.scheme == "content") {
-                    context.contentResolver.openInputStream(uri)?.use { stream ->
-                        android.graphics.BitmapFactory.decodeStream(stream)
+            val bitmap = withContext(Dispatchers.IO) {
+                when {
+                    uriStr.startsWith("https://") -> {
+                        RemoteImageLoader.load(uriStr, context)
+                            ?.let { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
                     }
-                } else {
-                    android.graphics.BitmapFactory.decodeFile(uri.path ?: uriStr)
-                        ?: context.contentResolver.openInputStream(uri)?.use { stream ->
-                            android.graphics.BitmapFactory.decodeStream(stream)
+                    uriStr.startsWith("content://") -> {
+                        val uri = Uri.parse(uriStr)
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            BitmapFactory.decodeStream(stream)
                         }
+                    }
+                    else -> {
+                        val uri = Uri.parse(uriStr)
+                        BitmapFactory.decodeFile(uri.path ?: uriStr)
+                            ?: context.contentResolver.openInputStream(uri)?.use { stream ->
+                                BitmapFactory.decodeStream(stream)
+                            }
+                    }
                 }
-                bitmap?.let { bmp ->
-                    val maxW = 200f
-                    val maxH = 110f
-                    val scaleW = maxW / bmp.width.toFloat()
-                    val scaleH = maxH / bmp.height.toFloat()
-                    val scale = minOf(scaleW, scaleH)
-                    val imgW = bmp.width * scale
-                    val imgH = bmp.height * scale
-                    val scaled = Bitmap.createScaledBitmap(bmp, imgW.toInt().coerceAtLeast(1), imgH.toInt().coerceAtLeast(1), true)
-                    canvas.drawBitmap(scaled, MARGIN + 10f, y + 2f, null)
-                    y += imgH + 8f
-                }
-            } catch (_: Exception) {}
+            }
+            val bmp = bitmap
+            if (bmp != null) {
+                val maxW = 200f
+                val maxH = 110f
+                val scaleW = maxW / bmp.width.toFloat()
+                val scaleH = maxH / bmp.height.toFloat()
+                val scale = minOf(scaleW, scaleH)
+                val imgW = bmp.width * scale
+                val imgH = bmp.height * scale
+                val scaled = Bitmap.createScaledBitmap(bmp, imgW.toInt().coerceAtLeast(1), imgH.toInt().coerceAtLeast(1), true)
+                canvas.drawBitmap(scaled, MARGIN + 10f, y + 2f, null)
+                y += imgH + 8f
+            }
         }
         canvas.drawLine(MARGIN, y, PAGE_WIDTH - MARGIN, y, Paint().apply { color = COL_GRAY_LIGHT; strokeWidth = 0.5f })
         return y + 8f
@@ -245,7 +260,8 @@ object InspectionPdfGenerator {
         canvas.drawText(gen, PAGE_WIDTH - MARGIN - gp.measureText(gen), y + 4f, gp)
     }
 
-    private fun saveDocument(context: Context, doc: PdfDocument, folio: String): Uri? {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    suspend fun saveDocument(context: Context, doc: PdfDocument, folio: String): Uri? {
         val fileName = "Dictamen_${folio.replace("/", "-")}_${System.currentTimeMillis()}.pdf"
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

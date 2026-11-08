@@ -35,7 +35,7 @@ class InspectionSyncWorker(
         val coordinator = SyncCoordinator(
             inspectionDao = db.inspectionDao(),
             incidenceDao = db.incidenceDao(),
-            remote = FirestoreInspectionDataSource.create(),
+            remote = FirestoreInspectionDataSource(),
             scheduler = WorkManagerSyncScheduler(appContext)
         )
 

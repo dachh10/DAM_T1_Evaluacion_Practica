@@ -73,6 +73,7 @@ import com.example.dam_t1_evaluacion_practica.domain.model.SyncState
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModel
 import com.example.dam_t1_evaluacion_practica.ui.components.NormativeChip
 import com.example.dam_t1_evaluacion_practica.ui.components.NormativeDetailBottomSheet
+import com.example.dam_t1_evaluacion_practica.ui.components.EvidenceImage
 import com.example.dam_t1_evaluacion_practica.util.GalleryUtils
 import com.example.dam_t1_evaluacion_practica.util.InspectionPdfGenerator
 import android.content.Intent
@@ -354,11 +355,6 @@ fun InspectionDetailScreen(
                     items(record.findings, key = { it.itemId }) { finding ->
                         DetailFindingCard(
                             finding = finding,
-                            photoLoader = {
-                                finding.photoUri?.let { uri ->
-                                    GalleryUtils.loadBitmapFromUri(context, Uri.parse(uri))
-                                }
-                            },
                             onNormClick = { inspectingNormativ = it }
                         )
                     }
@@ -760,10 +756,8 @@ private fun ItemAnswerIcon(item: ChecklistItem, module: ModuleCompletion) {
 @Composable
 private fun DetailFindingCard(
     finding: SessionFinding,
-    photoLoader: () -> Bitmap?,
     onNormClick: (Normativ) -> Unit = {}
 ) {
-    val bitmap = remember(finding.photoUri) { photoLoader() }
     val norm = remember(finding.normCode) {
         NormativesCatalog.ALL_NORMATIVES.firstOrNull { it.code == finding.normCode }
             ?: Normativ(code = finding.normCode)
@@ -821,15 +815,11 @@ private fun DetailFindingCard(
                     color = OnSurfaceVariant
                 )
             }
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Evidencia fotográfica",
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                )
-            }
+            EvidenceImage(
+                url = finding.photoUri,
+                contentDescription = "Evidencia fotográfica",
+                size = 64.dp
+            )
         }
     }
 }
