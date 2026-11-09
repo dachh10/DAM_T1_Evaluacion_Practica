@@ -383,8 +383,8 @@ class InspectionViewModel(
     /**
      * Prepares a fresh session that re-evaluates [parent] (a critical or
      * reinspection-due dictamen). The company/zone/audit type are inherited so the
-     * inspector does not retype them; the link is saved with the new dictamen and used
-     * to update the parent once the reinspection verdict is known.
+     * inspector does not retype them; saving the session updates that same dictamen
+     * instead of appending a new one.
      *
      * The closing status does not gate this: a critical dictamen can be re-evaluated
      * even when it was already moved to mitigation or closed.
@@ -398,6 +398,9 @@ class InspectionViewModel(
             )
         }
         startNewSession()
+        // The re-evaluation belongs to the same inspection, so incidences captured now
+        // stay linked to the record that is being updated in place.
+        activeInspectionId = parent.inspectionId
         _uiState.update {
             it.copy(
                 parentInspectionId = parent.inspectionId,
@@ -767,7 +770,7 @@ class InspectionViewModel(
         return baseTimestamp + REINSPECTION_WINDOW_MS
     }
 
-    /** Creates a session record, persists it in Room and returns it. */
+    /** Creates or re-evaluates a session record, persists it in Room and returns it. */
     fun saveDictamen(): InspectionSessionRecord {
         val s = _uiState.value
         val user = s.currentUser
@@ -776,90 +779,82 @@ class InspectionViewModel(
         val locatedFinding = s.sessionFindings.lastOrNull { it.latitude != null && it.longitude != null }
         val reinspectionDue = s.reinspectionDue || score < REINSPECTION_THRESHOLD
         val criticalStop = s.criticalStopTriggered || score < REINSPECTION_THRESHOLD
+        val now = System.currentTimeMillis()
 
-        val record = InspectionSessionRecord(
-            folio = generateFolio(s.savedInspections),
-            inspectionId = activeInspectionId,
-            parentInspectionId = s.parentInspectionId,
-            userEmail = user?.email ?: "",
-            companyName = s.companyName,
-            zoneName = s.zoneName,
-            auditType = s.auditType,
-            inspectorName = user?.name ?: s.inspectorName,
-            inspectorCedula = user?.cedula ?: InspectorProfile.CEDULA,
-            timestamp = System.currentTimeMillis(),
-            overallScore = score,
-            criticalStop = criticalStop,
-            reinspectionDue = reinspectionDue,
-            scheduledReinspectionAt = if (reinspectionDue) scheduleReinspection(System.currentTimeMillis()) else null,
-            modules = s.sessionModules,
-            findings = s.sessionFindings,
-            normCodes = s.sessionModules.flatMap { it.normCodes }.distinct(),
-            latitude = locatedFinding?.latitude ?: DEFAULT_SITE_LATITUDE,
-            longitude = locatedFinding?.longitude ?: DEFAULT_SITE_LONGITUDE,
-            status = if (criticalStop || reinspectionDue) IncidenceStatus.OPEN else IncidenceStatus.CLOSED,
-            // Owner identity for Firestore rules and owner-scoped queries.
-            ownerUid = user?.uid.orEmpty()
-        )
-
-        // A reinspection resolves the dictamen it re-evaluates: passing closes it,
-        // failing keeps it critical but marks the pending reinspection as attended.
-        val parent = s.parentInspectionId
+        // A reinspection re-evaluates the SAME dictamen: the record is updated in place
+        // (same folio and inspectionId) instead of appending a new one, so history never
+        // grows with a duplicate after re-evaluating a critical stop.
+        val target = s.parentInspectionId
             ?.let { id -> s.savedInspections.firstOrNull { it.inspectionId == id } }
-        val updatedParent = parent?.let { previous ->
-            if (!criticalStop && !reinspectionDue) {
-                previous.copy(
-                    status = IncidenceStatus.CLOSED,
-                    criticalStop = false,
-                    reinspectionDue = false,
-                    scheduledReinspectionAt = null,
-                    updatedAt = System.currentTimeMillis()
-                )
-            } else {
-                // A failed reinspection returns the dictamen to the critical state so it
-                // can be marked critical again (and re-evaluated later).
-                previous.copy(
-                    status = IncidenceStatus.OPEN,
-                    reinspectionDue = false,
-                    scheduledReinspectionAt = null,
-                    updatedAt = System.currentTimeMillis()
-                )
-            }
+
+        val record = if (target != null) {
+            target.copy(
+                companyName = s.companyName,
+                zoneName = s.zoneName,
+                auditType = s.auditType,
+                inspectorName = user?.name ?: s.inspectorName,
+                inspectorCedula = user?.cedula ?: InspectorProfile.CEDULA,
+                userEmail = user?.email?.takeIf { it.isNotBlank() } ?: target.userEmail,
+                ownerUid = user?.uid?.takeIf { it.isNotBlank() } ?: target.ownerUid,
+                timestamp = now,
+                overallScore = score,
+                criticalStop = criticalStop,
+                reinspectionDue = reinspectionDue,
+                scheduledReinspectionAt = if (reinspectionDue) scheduleReinspection(now) else null,
+                modules = s.sessionModules,
+                findings = s.sessionFindings,
+                normCodes = s.sessionModules.flatMap { it.normCodes }.distinct(),
+                latitude = locatedFinding?.latitude ?: DEFAULT_SITE_LATITUDE,
+                longitude = locatedFinding?.longitude ?: DEFAULT_SITE_LONGITUDE,
+                status = if (criticalStop || reinspectionDue) IncidenceStatus.OPEN else IncidenceStatus.CLOSED,
+                updatedAt = now
+            )
+        } else {
+            InspectionSessionRecord(
+                folio = generateFolio(s.savedInspections),
+                inspectionId = activeInspectionId,
+                parentInspectionId = s.parentInspectionId,
+                userEmail = user?.email ?: "",
+                companyName = s.companyName,
+                zoneName = s.zoneName,
+                auditType = s.auditType,
+                inspectorName = user?.name ?: s.inspectorName,
+                inspectorCedula = user?.cedula ?: InspectorProfile.CEDULA,
+                timestamp = now,
+                overallScore = score,
+                criticalStop = criticalStop,
+                reinspectionDue = reinspectionDue,
+                scheduledReinspectionAt = if (reinspectionDue) scheduleReinspection(now) else null,
+                modules = s.sessionModules,
+                findings = s.sessionFindings,
+                normCodes = s.sessionModules.flatMap { it.normCodes }.distinct(),
+                latitude = locatedFinding?.latitude ?: DEFAULT_SITE_LATITUDE,
+                longitude = locatedFinding?.longitude ?: DEFAULT_SITE_LONGITUDE,
+                status = if (criticalStop || reinspectionDue) IncidenceStatus.OPEN else IncidenceStatus.CLOSED,
+                // Owner identity for Firestore rules and owner-scoped queries.
+                ownerUid = user?.uid.orEmpty()
+            )
         }
 
-        // Update UI state immediately for responsive UI and test consistency
+        // Update UI state immediately for responsive UI and test consistency.
         _uiState.update {
-            val records = it.savedInspections
-                .filterNot { r -> r.folio == record.folio }
-                .map { r -> if (updatedParent != null && r.inspectionId == updatedParent.inspectionId) updatedParent else r }
-            it.copy(savedInspections = records + record)
+            val records = if (target != null) {
+                it.savedInspections.map { r -> if (r.inspectionId == record.inspectionId) record else r }
+            } else {
+                it.savedInspections.filterNot { r -> r.folio == record.folio } + record
+            }
+            it.copy(savedInspections = records)
         }
 
-        // Persist to Room
+        // Persist to Room: an in-place re-evaluation updates the existing row.
         viewModelScope.launch {
             try {
-                repository.saveInspection(record)
-                updatedParent?.let { repository.updateInspection(it) }
+                if (target != null) repository.updateInspection(record) else repository.saveInspection(record)
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "Error guardando inspección: ${e.message}") }
             }
         }
         return record
-    }
-
-    fun updateRecordStatus(folio: String, status: IncidenceStatus) {
-        val record = _uiState.value.savedInspections.firstOrNull { it.folio == folio } ?: return
-        val updated = record.copy(status = status)
-        _uiState.update {
-            it.copy(savedInspections = it.savedInspections.map { r -> if (r.folio == folio) updated else r })
-        }
-        viewModelScope.launch {
-            try {
-                repository.updateInspection(updated)
-            } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = "Error actualizando estado: ${e.message}") }
-            }
-        }
     }
 
     /** Requeues a failed inspection for another sync attempt. */

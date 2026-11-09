@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -42,8 +44,10 @@ import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModelFa
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectorProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 sealed class Screen {
     data object Login : Screen()
@@ -86,6 +90,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AppRoot(app: SecurityInspectionsApp) {
     var container by remember { mutableStateOf<AppContainer?>(null) }
+    var initialSession by remember { mutableStateOf<AuthSession?>(null) }
+    var sessionBootstrapped by remember { mutableStateOf(false) }
     var minimumSplashElapsed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -95,47 +101,80 @@ private fun AppRoot(app: SecurityInspectionsApp) {
         delay(MINIMUM_SPLASH_MS)
         minimumSplashElapsed = true
     }
+    // Resolve the restored session while the branded splash is still visible, so the app
+    // lands directly on the right screen: the dashboard when the account is already
+    // signed in, the login form only when there really is no session. Without this the
+    // app composed Login first and jumped to the dashboard a frame later.
+    LaunchedEffect(container) {
+        val ready = container ?: return@LaunchedEffect
+        initialSession = withTimeoutOrNull(SESSION_BOOTSTRAP_TIMEOUT_MS) {
+            ready.auth.session.first()
+        }
+        sessionBootstrapped = true
+    }
 
     val ready = container
-    if (ready == null || !minimumSplashElapsed) {
-        SplashScreen()
-    } else {
-        InspectionApp(container = ready)
+    val bootstrapped = ready != null && minimumSplashElapsed && sessionBootstrapped
+    Crossfade(
+        targetState = bootstrapped,
+        animationSpec = tween(durationMillis = 320),
+        label = "AppBootstrap"
+    ) { complete ->
+        if (complete && ready != null) {
+            InspectionApp(container = ready, initialSession = initialSession)
+        } else {
+            SplashScreen()
+        }
     }
 }
 
 /** Minimum time the branded splash stays on screen so it does not flash on fast devices. */
 private const val MINIMUM_SPLASH_MS = 900L
 
+/**
+ * Upper bound for the restored-session check. Firebase restores from its local cache and
+ * emits immediately, so this only guards against a stalled provider trapping the splash.
+ */
+private const val SESSION_BOOTSTRAP_TIMEOUT_MS = 2_000L
+
 @Composable
-private fun InspectionApp(container: AppContainer) {
+private fun InspectionApp(container: AppContainer, initialSession: AuthSession?) {
     val activity = LocalContext.current as ComponentActivity
     val viewModel = remember(container) {
         val factory = InspectionViewModelFactory(container.inspection)
         ViewModelProvider(activity, factory)[InspectionViewModel::class.java]
     }
     val authRepository = container.auth
-    InspectionApp(viewModel = viewModel, authRepository = authRepository)
+    InspectionApp(
+        viewModel = viewModel,
+        authRepository = authRepository,
+        initialSession = initialSession
+    )
 }
 
 @Composable
-fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository) {
-    var currentScreen by remember { mutableStateOf<Screen>(Screen.Login) }
-    var session by remember { mutableStateOf<AuthSession?>(null) }
-    var sessionResolved by remember { mutableStateOf(false) }
+fun InspectionApp(
+    viewModel: InspectionViewModel,
+    authRepository: AuthRepository,
+    initialSession: AuthSession? = null
+) {
+    // Start where the resolved session actually belongs, so a signed-in inspector never
+    // sees the login screen flash on the way to the dashboard.
+    var currentScreen by remember {
+        mutableStateOf<Screen>(if (initialSession != null) Screen.Dashboard else Screen.Login)
+    }
+    var session by remember { mutableStateOf(initialSession) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(authRepository) {
         authRepository.session.collect { active ->
             session = active
-            sessionResolved = true
         }
     }
 
     // Auth-aware navigation (design section 9): a restored session reopens the
     // dashboard, and losing the session returns to the login screen.
-    LaunchedEffect(session, sessionResolved) {
-        if (!sessionResolved) return@LaunchedEffect
+    LaunchedEffect(session) {
         val active = session
         if (active == null) {
             // The provider session is gone: the local identity must go with it.
@@ -272,7 +311,6 @@ fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository
                         viewModel.uiState.value.savedInspections.find { it.folio == record.folio } ?: record
                     )
                 },
-                onUpdateRecordStatus = viewModel::updateRecordStatus,
                 onNewInspection = { currentScreen = Screen.NewInspection },
                 selectedTab = MainTab.INSPECCIONES,
                 title = "Inspecciones",
@@ -296,7 +334,6 @@ fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository
                 onBack = {
                     currentScreen = Screen.Inspecciones
                 },
-                onUpdateStatus = { status -> viewModel.updateRecordStatus(freshRecord.folio, status) },
                 onReinspect = {
                     // Re-evaluates the same company/zone in a fresh, linked session.
                     viewModel.startReinspection(freshRecord)

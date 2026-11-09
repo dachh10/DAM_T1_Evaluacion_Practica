@@ -21,14 +21,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.Timelapse
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -51,7 +48,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.dam_t1_evaluacion_practica.domain.model.IncidenceStatus
 import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionRecord
 import com.example.dam_t1_evaluacion_practica.domain.model.SyncState
 import com.example.dam_t1_evaluacion_practica.ui.components.AppTopBar
@@ -83,12 +79,6 @@ private fun recordStatus(record: InspectionSessionRecord): Pair<Color, String> =
     else -> SuccessColor to "Conforme"
 }
 
-private fun closingStatusPresentation(status: IncidenceStatus): Pair<Color, String> = when (status) {
-    IncidenceStatus.OPEN -> ErrorColor to "Abierto"
-    IncidenceStatus.IN_MITIGATION -> AmberSecondary to "En Mitigación"
-    IncidenceStatus.CLOSED -> SuccessColor to "Cerrado"
-}
-
 private fun formatDate(ts: Long): String =
     SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("es", "MX")).format(Date(ts))
 
@@ -96,7 +86,6 @@ private fun formatDate(ts: Long): String =
 fun HistorialScreen(
     viewModel: InspectionViewModel,
     onSelectRecord: (InspectionSessionRecord) -> Unit = {},
-    onUpdateRecordStatus: (String, IncidenceStatus) -> Unit = { _, _ -> },
     onNewInspection: () -> Unit = {},
     onTabSelected: (MainTab) -> Unit = {},
     selectedTab: MainTab = MainTab.INSPECCION,
@@ -224,7 +213,6 @@ fun HistorialScreen(
                         HistoryRecordCard(
                             record = record,
                             onClick = { onSelectRecord(record) },
-                            onUpdateStatus = { status -> onUpdateRecordStatus(record.folio, status) },
                             onRetrySync = { inspectionId -> viewModel.retrySync(inspectionId) }
                         )
                     }
@@ -292,7 +280,6 @@ private fun StatCell(label: String, value: String, icon: androidx.compose.ui.gra
 private fun HistoryRecordCard(
     record: InspectionSessionRecord,
     onClick: () -> Unit,
-    onUpdateStatus: (IncidenceStatus) -> Unit = {},
     onRetrySync: (String) -> Unit = {}
 ) {
     val (accent, statusLabel) = recordStatus(record)
@@ -345,10 +332,6 @@ private fun HistoryRecordCard(
                                 color = accent
                             )
                         }
-                        ClosingStatusChip(
-                            record = record,
-                            onUpdateStatus = onUpdateStatus
-                        )
                         SyncStatusChip(
                             syncState = record.syncState,
                             onRetry = { onRetrySync(record.inspectionId) }
@@ -420,74 +403,6 @@ private fun HistoryRecordCard(
                             modifier = Modifier.size(16.dp)
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Closing-status chip of the dictamen card. Non-conforming records (critical stop or
- * reinspection due) advance one strict forward step (OPEN -> IN_MITIGATION -> CLOSED):
- * the chip opens a dropdown with the single allowed next status. Records with no next
- * status (CLOSED) or conforming records render a fixed chip with no dropdown.
- */
-@Composable
-private fun ClosingStatusChip(
-    record: InspectionSessionRecord,
-    onUpdateStatus: (IncidenceStatus) -> Unit
-) {
-    val (statusColor, statusLabel) = closingStatusPresentation(record.status)
-    val nextStatus = IncidenceStatus.entries.firstOrNull { it.ordinal == record.status.ordinal + 1 }
-    val editable = (record.criticalStop || record.reinspectionDue) && nextStatus != null
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    Box {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50.dp))
-                .background(statusColor.copy(alpha = 0.12f))
-                .then(if (editable) Modifier.clickable { menuExpanded = true } else Modifier)
-                .padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Text(
-                text = statusLabel,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = statusColor
-            )
-            if (editable) {
-                Icon(
-                    imageVector = Icons.Filled.ExpandMore,
-                    contentDescription = "Cambiar estado",
-                    tint = statusColor,
-                    modifier = Modifier.size(12.dp)
-                )
-            }
-        }
-        if (editable) {
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false }
-            ) {
-                nextStatus?.let { status ->
-                    val (itemColor, itemLabel) = closingStatusPresentation(status)
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = itemLabel,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = itemColor
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            if (status != record.status) onUpdateStatus(status)
-                        }
-                    )
                 }
             }
         }

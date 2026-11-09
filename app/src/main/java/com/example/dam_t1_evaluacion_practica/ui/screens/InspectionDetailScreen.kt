@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -34,8 +33,6 @@ import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,7 +47,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -63,7 +59,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dam_t1_evaluacion_practica.R
 import com.example.dam_t1_evaluacion_practica.domain.model.ChecklistItem
-import com.example.dam_t1_evaluacion_practica.domain.model.IncidenceStatus
 import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionRecord
 import com.example.dam_t1_evaluacion_practica.domain.model.ModuleCompletion
 import com.example.dam_t1_evaluacion_practica.domain.model.Normativ
@@ -118,12 +113,6 @@ private fun detailStatus(record: InspectionSessionRecord): Pair<Color, String> =
     else -> SuccessColor to "CONFORME"
 }
 
-private fun closingStatusPresentation(status: IncidenceStatus): Pair<Color, String> = when (status) {
-    IncidenceStatus.OPEN -> ErrorColor to "Abierto"
-    IncidenceStatus.IN_MITIGATION -> AmberSecondary to "En Mitigación"
-    IncidenceStatus.CLOSED -> SuccessColor to "Cerrado"
-}
-
 private fun formatDate(ts: Long): String =
     SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("es", "MX")).format(Date(ts))
 
@@ -132,7 +121,6 @@ private fun formatDate(ts: Long): String =
 fun InspectionDetailScreen(
     record: InspectionSessionRecord,
     onBack: () -> Unit = {},
-    onUpdateStatus: (IncidenceStatus) -> Unit = {},
     onReinspect: () -> Unit = {},
     viewModel: InspectionViewModel? = null
 ) {
@@ -318,10 +306,6 @@ fun InspectionDetailScreen(
                                 fontWeight = FontWeight.ExtraBold,
                                 color = accent,
                                 letterSpacing = 0.4.sp
-                            )
-                            ClosingStatusChip(
-                                record = record,
-                                onUpdateStatus = onUpdateStatus
                             )
                             SyncStatusChip(
                                 syncState = record.syncState,
@@ -560,74 +544,6 @@ private fun DetailInfoRow(label: String, value: String) {
             modifier = Modifier.weight(1f, fill = false),
             textAlign = androidx.compose.ui.text.style.TextAlign.End
         )
-    }
-}
-
-/**
- * Closing-status chip of the dictamen. Non-conforming records (critical stop or
- * reinspection due) advance one strict forward step (OPEN -> IN_MITIGATION -> CLOSED):
- * the chip opens a dropdown with the single allowed next status. Records with no next
- * status (CLOSED) or conforming records render a fixed chip with no dropdown.
- */
-@Composable
-private fun ClosingStatusChip(
-    record: InspectionSessionRecord,
-    onUpdateStatus: (IncidenceStatus) -> Unit
-) {
-    val (statusColor, statusLabel) = closingStatusPresentation(record.status)
-    val nextStatus = IncidenceStatus.entries.firstOrNull { it.ordinal == record.status.ordinal + 1 }
-    val editable = (record.criticalStop || record.reinspectionDue) && nextStatus != null
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    Box {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50.dp))
-                .background(statusColor.copy(alpha = 0.12f))
-                .then(if (editable) Modifier.clickable { menuExpanded = true } else Modifier)
-                .padding(horizontal = 12.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = statusLabel,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = statusColor
-            )
-            if (editable) {
-                Icon(
-                    imageVector = Icons.Filled.ExpandMore,
-                    contentDescription = "Cambiar estado",
-                    tint = statusColor,
-                    modifier = Modifier.size(14.dp)
-                )
-            }
-        }
-        if (editable) {
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false }
-            ) {
-                nextStatus?.let { status ->
-                    val (itemColor, itemLabel) = closingStatusPresentation(status)
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = itemLabel,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = itemColor
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            if (status != record.status) onUpdateStatus(status)
-                        }
-                    )
-                }
-            }
-        }
     }
 }
 

@@ -613,7 +613,7 @@ class InspectionViewModelTest {
     // --- saveDictamen: closing status (IncidenceStatus) ---
 
     @Test
-    fun `saveDictamen conforming record starts CLOSED and updateRecordStatus transitions it`() {
+    fun `saveDictamen conforming record starts CLOSED`() {
         val items = checklistSevenHigh()
         viewModel.initChecklist(items)
 
@@ -625,12 +625,6 @@ class InspectionViewModelTest {
         // A conforming dictamen starts CLOSED (neither criticalStop nor reinspectionDue).
         assertEquals(IncidenceStatus.CLOSED, record.status)
         assertEquals(IncidenceStatus.CLOSED, viewModel.uiState.value.savedInspections.single().status)
-
-        // The inspector transitions the closing status (e.g. an opened mitigation).
-        viewModel.updateRecordStatus(record.folio, IncidenceStatus.IN_MITIGATION)
-
-        val updated = viewModel.uiState.value.savedInspections.single()
-        assertEquals(IncidenceStatus.IN_MITIGATION, updated.status)
     }
 
     @Test
@@ -649,7 +643,7 @@ class InspectionViewModelTest {
         assertEquals(IncidenceStatus.OPEN, record.status)
     }
 
-    // --- reinspection flow: linked child session and parent resolution ---
+    // --- reinspection flow: the same dictamen is re-evaluated in place ---
 
     private fun saveCriticalParent(): InspectionSessionRecord {
         val items = checklistSevenHigh()
@@ -660,7 +654,7 @@ class InspectionViewModelTest {
     }
 
     @Test
-    fun `startReinspection inherits context, links the parent and clears the session`() {
+    fun `startReinspection inherits context, links the target and clears the session`() {
         val parent = saveCriticalParent()
         assertTrue(parent.criticalStop)
         assertEquals(IncidenceStatus.OPEN, parent.status)
@@ -679,7 +673,7 @@ class InspectionViewModelTest {
     }
 
     @Test
-    fun `saving a conforming reinspection closes the parent dictamen`() {
+    fun `saving a conforming reinspection updates the same dictamen in place`() {
         val parent = saveCriticalParent()
         viewModel.startReinspection(parent)
 
@@ -687,21 +681,22 @@ class InspectionViewModelTest {
         viewModel.initChecklist(items)
         items.forEach { viewModel.submitAnswer(it, isCompliant = true) } // 100, conforming
         viewModel.finishModule("Modulo EPP", items)
-        val child = viewModel.saveDictamen()
+        val updated = viewModel.saveDictamen()
 
-        assertEquals(parent.inspectionId, child.parentInspectionId)
-        assertEquals(IncidenceStatus.CLOSED, child.status)
-
-        val storedParent = viewModel.uiState.value.savedInspections
-            .first { it.inspectionId == parent.inspectionId }
-        assertEquals(IncidenceStatus.CLOSED, storedParent.status)
-        assertFalse(storedParent.criticalStop)
-        assertFalse(storedParent.reinspectionDue)
-        assertNull(storedParent.scheduledReinspectionAt)
+        // The re-evaluation keeps the same folio and identity: no new dictamen is added.
+        assertEquals(parent.folio, updated.folio)
+        assertEquals(parent.inspectionId, updated.inspectionId)
+        assertEquals(1, viewModel.uiState.value.savedInspections.size)
+        assertEquals(IncidenceStatus.CLOSED, updated.status)
+        assertFalse(updated.criticalStop)
+        assertFalse(updated.reinspectionDue)
+        assertNull(updated.scheduledReinspectionAt)
+        assertNull(updated.parentInspectionId)
+        assertEquals(100, updated.overallScore)
     }
 
     @Test
-    fun `saving a failed reinspection keeps the parent critical and clears its pending flag`() {
+    fun `saving a failed reinspection keeps the same dictamen critical`() {
         val parent = saveCriticalParent()
         viewModel.startReinspection(parent)
 
@@ -709,58 +704,16 @@ class InspectionViewModelTest {
         viewModel.initChecklist(items)
         items.take(5).forEach { viewModel.submitAnswer(it, isCompliant = true) } // still 71
         viewModel.finishModule("Modulo EPP", items)
-        val child = viewModel.saveDictamen()
+        val updated = viewModel.saveDictamen()
 
-        assertTrue(child.criticalStop)
-        assertTrue(child.reinspectionDue)
-
-        val storedParent = viewModel.uiState.value.savedInspections
-            .first { it.inspectionId == parent.inspectionId }
-        assertEquals(IncidenceStatus.OPEN, storedParent.status)
-        assertTrue(storedParent.criticalStop)
-        assertFalse(storedParent.reinspectionDue)
-        assertNull(storedParent.scheduledReinspectionAt)
-    }
-
-    @Test
-    fun `startReinspection allows re-evaluating a closed critical dictamen`() {
-        val parent = saveCriticalParent()
-        viewModel.updateRecordStatus(parent.folio, IncidenceStatus.CLOSED)
-        val closedParent = viewModel.uiState.value.savedInspections
-            .first { it.inspectionId == parent.inspectionId }
-        assertEquals(IncidenceStatus.CLOSED, closedParent.status)
-
-        viewModel.startReinspection(closedParent)
-
-        val state = viewModel.uiState.value
-        assertEquals(parent.inspectionId, state.parentInspectionId)
-        assertEquals(parent.folio, state.parentInspectionFolio)
-        assertTrue(state.answers.isEmpty())
-        assertTrue(state.sessionModules.isEmpty())
-        assertFalse(state.criticalStopTriggered)
-    }
-
-    @Test
-    fun `a failed reinspection reopens a closed critical parent`() {
-        val parent = saveCriticalParent()
-        viewModel.updateRecordStatus(parent.folio, IncidenceStatus.CLOSED)
-        val closedParent = viewModel.uiState.value.savedInspections
-            .first { it.inspectionId == parent.inspectionId }
-
-        viewModel.startReinspection(closedParent)
-
-        val items = checklistSevenHigh()
-        viewModel.initChecklist(items)
-        items.take(5).forEach { viewModel.submitAnswer(it, isCompliant = true) } // still 71
-        viewModel.finishModule("Modulo EPP", items)
-        viewModel.saveDictamen()
-
-        val storedParent = viewModel.uiState.value.savedInspections
-            .first { it.inspectionId == parent.inspectionId }
-        assertEquals(IncidenceStatus.OPEN, storedParent.status)
-        assertTrue(storedParent.criticalStop)
-        assertFalse(storedParent.reinspectionDue)
-        assertNull(storedParent.scheduledReinspectionAt)
+        // A failed re-evaluation marks the same dictamen critical again, with a new window.
+        assertEquals(parent.folio, updated.folio)
+        assertEquals(parent.inspectionId, updated.inspectionId)
+        assertEquals(1, viewModel.uiState.value.savedInspections.size)
+        assertEquals(IncidenceStatus.OPEN, updated.status)
+        assertTrue(updated.criticalStop)
+        assertTrue(updated.reinspectionDue)
+        assertNotNull(updated.scheduledReinspectionAt)
     }
 
     // --- N/A scoring, per-point evidence rules, zone score and work stoppage ---
