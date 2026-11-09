@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -80,7 +81,8 @@ fun CriticalStopDialog(
     findings: List<SessionFinding>,
     onAttachEvidence: (itemId: String, photoUri: String?, lat: Double?, lng: Double?, notes: String) -> Unit,
     onContinue: () -> Unit,
-    liveStop: Boolean = false
+    liveStop: Boolean = false,
+    onAcknowledge: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val captureLocation = rememberLocationCapture()
@@ -88,6 +90,7 @@ fun CriticalStopDialog(
     var photoTargetItemId by remember { mutableStateOf<String?>(null) }
     var lastLocation by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     val notesByItem = remember { mutableStateMapOf<String, String>() }
+    var acknowledged by remember { mutableStateOf(false) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
@@ -113,21 +116,28 @@ fun CriticalStopDialog(
     // No evidence can be attached when the findings list is empty (e.g. a score-based
     // finish stop with only N/A answers, which never require evidence): the dialog must
     // never trap the inspector, so continuation is always allowed in that case.
-    val canSave = findings.isEmpty() || findings.all { finding ->
-        val hasPhoto = capturedUris[finding.itemId] != null || !finding.photoUri.isNullOrBlank()
-        val hasNote = notesByItem[finding.itemId]?.isNotBlank() == true || !finding.notes.isNullOrBlank()
+    val evidenceComplete = findings.isEmpty() || findings.all { finding ->
+        val needsPhoto = finding.requiresPhotoEvidence
+        val needsNote = finding.criticalityLevel == CriticalityLevel.HIGH
+        val hasPhoto = !needsPhoto || capturedUris[finding.itemId] != null || !finding.photoUri.isNullOrBlank()
+        val hasNote = !needsNote || notesByItem[finding.itemId]?.isNotBlank() == true || !finding.notes.isNullOrBlank()
         hasPhoto && hasNote
     }
+    // Detener labores is an explicit act: the inspector must confirm it, not just close.
+    val canSave = evidenceComplete && acknowledged
 
     val locationStatus = lastLocation?.let { (lat, lng) ->
         "Ubicación real: ${String.format(Locale.US, "%.5f", lat)}, ${String.format(Locale.US, "%.5f", lng)}"
     } ?: "GPS no disponible — se usará ubicación aproximada"
 
     AlertDialog(
-        onDismissRequest = onContinue,
+        // The alert cannot be dismissed by tapping outside or pressing back: the stop
+        // only ends with the explicit confirmation below.
+        onDismissRequest = {},
         confirmButton = {
             Button(
                 onClick = {
+                    onAcknowledge()
                     findings.forEach { finding ->
                         onAttachEvidence(
                             finding.itemId,
@@ -154,7 +164,7 @@ fun CriticalStopDialog(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (findings.isEmpty()) "Continuar" else "Guardar Evidencia y Continuar",
+                    text = if (findings.isEmpty()) "Confirmar y Continuar" else "Guardar Evidencia y Continuar",
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -282,6 +292,27 @@ fun CriticalStopDialog(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         color = if (lastLocation != null) OnSuccessContainer else OnSurfaceVariant
+                    )
+                }
+
+                // Explicit work-stoppage confirmation: required to leave the dialog.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SurfaceHigh)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = acknowledged,
+                        onCheckedChange = { acknowledged = it }
+                    )
+                    Text(
+                        text = "Confirmo la detención de las labores en la zona",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = OnSurface
                     )
                 }
             }

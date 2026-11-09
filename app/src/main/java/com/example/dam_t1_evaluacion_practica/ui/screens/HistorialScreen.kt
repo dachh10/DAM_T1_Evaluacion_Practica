@@ -58,6 +58,7 @@ import com.example.dam_t1_evaluacion_practica.ui.components.AppTopBar
 import com.example.dam_t1_evaluacion_practica.ui.components.BottomNavBar
 import com.example.dam_t1_evaluacion_practica.ui.components.MainTab
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModel
+import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectorProfile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -130,7 +131,8 @@ fun HistorialScreen(
                 title = title,
                 subtitle = subtitle,
                 onNotificationsClick = {},
-                onProfileClick = { onTabSelected(MainTab.PERFIL) }
+                onProfileClick = { onTabSelected(MainTab.PERFIL) },
+                initials = InspectorProfile.initialsOf(uiState.currentUser)
             )
         },
         floatingActionButton = {

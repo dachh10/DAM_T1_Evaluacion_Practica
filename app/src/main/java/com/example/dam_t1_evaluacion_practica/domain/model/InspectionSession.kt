@@ -34,7 +34,9 @@ data class SessionFinding(
     val photoUri: String?,
     val timestamp: Long,
     val latitude: Double? = null,
-    val longitude: Double? = null
+    val longitude: Double? = null,
+    /** Mirrors [ChecklistItem.requiresPhotoEvidence]: the point itself mandates a photo. */
+    val requiresPhotoEvidence: Boolean = false
 )
 
 /**
@@ -45,6 +47,8 @@ data class InspectionSessionRecord(
     val folio: String,
     // Cloud identity assigned at session start; folio stays display-only.
     val inspectionId: String,
+    /** Set when this dictamen re-evaluates an earlier critical inspection. */
+    val parentInspectionId: String? = null,
     val userEmail: String = "",
     val companyName: String,
     val zoneName: String,

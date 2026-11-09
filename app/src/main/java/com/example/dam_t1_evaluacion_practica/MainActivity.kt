@@ -39,6 +39,7 @@ import com.example.dam_t1_evaluacion_practica.ui.screens.SplashScreen
 import com.example.dam_t1_evaluacion_practica.ui.theme.DAM_T1_Evaluacion_PracticaTheme
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModel
 import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectionViewModelFactory
+import com.example.dam_t1_evaluacion_practica.ui.viewmodel.InspectorProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -185,6 +186,7 @@ fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository
             )
         }
         is Screen.NewInspection -> {
+            val currentUser = viewModel.uiState.value.currentUser
             NewInspectionScreen(
                 onBack = {
                     currentScreen = Screen.Dashboard
@@ -193,14 +195,22 @@ fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository
                     viewModel.setSessionContext(companyName, zoneName, auditType.label)
                     viewModel.startNewSession()
                     currentScreen = Screen.ModulesSummary
-                }
+                },
+                inspectorName = InspectorProfile.nameOf(currentUser),
+                inspectorCedula = InspectorProfile.cedulaOf(currentUser),
+                inspectorInitials = InspectorProfile.initialsOf(currentUser)
             )
         }
         is Screen.ModulesSummary -> {
             ModulesSummaryScreen(
                 viewModel = viewModel,
                 onBack = {
-                    currentScreen = Screen.NewInspection
+                    // A reinspection has no form to return to: backing out cancels it.
+                    currentScreen = if (viewModel.uiState.value.parentInspectionId != null) {
+                        Screen.Dashboard
+                    } else {
+                        Screen.NewInspection
+                    }
                 },
                 onSelectModule = { module ->
                     viewModel.openModule(module.title, itemsFor(module))
@@ -287,6 +297,11 @@ fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository
                     currentScreen = Screen.Inspecciones
                 },
                 onUpdateStatus = { status -> viewModel.updateRecordStatus(freshRecord.folio, status) },
+                onReinspect = {
+                    // Re-evaluates the same company/zone in a fresh, linked session.
+                    viewModel.startReinspection(freshRecord)
+                    currentScreen = Screen.ModulesSummary
+                },
                 viewModel = viewModel
             )
         }
@@ -304,8 +319,6 @@ fun InspectionApp(viewModel: InspectionViewModel, authRepository: AuthRepository
                     viewModel.logout {
                         currentScreen = Screen.Login
                     }
-                    // The ViewModel owns the local state only: terminating the provider
-                    // session is what makes the session flow emit null.
                     scope.launch { authRepository.signOut() }
                 }
             )

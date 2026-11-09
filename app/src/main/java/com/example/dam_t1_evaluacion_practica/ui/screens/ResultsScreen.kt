@@ -276,8 +276,19 @@ fun ResultsScreen(
                         .navigationBarsPadding(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    if (uiState.criticalEvidencePending) {
+                        Text(
+                            text = "Evidencia pendiente: completa la foto y la observación de los hallazgos críticos antes de guardar.",
+                            color = ErrorColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                     Button(
                         onClick = onSaveDictamen,
+                        // The dictamen cannot be saved while any finding still owes evidence
+                        // or the critical stop has not been acknowledged.
+                        enabled = !uiState.criticalEvidencePending && !uiState.answersLocked,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),

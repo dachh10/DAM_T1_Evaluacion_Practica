@@ -16,6 +16,7 @@ fun InspectionEntity.toDomainModel(): InspectionSessionRecord {
     return InspectionSessionRecord(
         folio = folio,
         inspectionId = inspectionId,
+        parentInspectionId = parentInspectionId,
         userEmail = userEmail,
         ownerUid = ownerUid,
         syncState = try {
@@ -50,6 +51,7 @@ fun InspectionEntity.toDomainModel(): InspectionSessionRecord {
 fun InspectionSessionRecord.toEntity(): InspectionEntity {
     return InspectionEntity(
         inspectionId = inspectionId,
+        parentInspectionId = parentInspectionId,
         folio = folio,
         userEmail = userEmail,
         ownerUid = ownerUid,
@@ -105,6 +107,7 @@ fun findingsToJson(findings: List<SessionFinding>): String {
             put("isNA", f.isNA)
             put("notes", f.notes ?: "")
             put("photoUri", f.photoUri ?: "")
+            put("requiresPhotoEvidence", f.requiresPhotoEvidence)
             put("timestamp", f.timestamp)
             if (f.latitude != null) put("latitude", f.latitude)
             if (f.longitude != null) put("longitude", f.longitude)
@@ -131,6 +134,7 @@ internal fun findingsToRemoteJson(findings: List<SessionFinding>): String {
             put("notes", f.notes ?: "")
             val remotePhotoUri = if (f.photoUri?.startsWith("content://") == true) null else f.photoUri
             put("photoUri", remotePhotoUri ?: JSONObject.NULL)
+            put("requiresPhotoEvidence", f.requiresPhotoEvidence)
             put("timestamp", f.timestamp)
             if (f.latitude != null) put("latitude", f.latitude)
             if (f.longitude != null) put("longitude", f.longitude)
@@ -162,6 +166,7 @@ fun parseFindingsJson(json: String): List<SessionFinding> {
                     isNA = obj.optBoolean("isNA", false),
                     notes = obj.optString("notes").ifBlank { null },
                     photoUri = photoUri,
+                    requiresPhotoEvidence = obj.optBoolean("requiresPhotoEvidence", false),
                     timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
                     latitude = if (obj.has("latitude")) obj.optDouble("latitude") else null,
                     longitude = if (obj.has("longitude")) obj.optDouble("longitude") else null

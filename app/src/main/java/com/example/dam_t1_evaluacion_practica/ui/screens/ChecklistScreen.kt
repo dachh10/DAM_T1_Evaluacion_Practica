@@ -70,8 +70,8 @@ fun ChecklistScreen(
     var showCriticalDialog by remember { mutableStateOf(false) }
     var selectedNormativ by remember { mutableStateOf<Normativ?>(null) }
 
-    // Dialog trigger when critical stop activates
-    if (uiState.criticalStopTriggered && !showCriticalDialog) {
+    // Dialog trigger while the critical stop is still unacknowledged.
+    if (uiState.answersLocked && !showCriticalDialog) {
         showCriticalDialog = true
     }
 
@@ -83,6 +83,7 @@ fun ChecklistScreen(
                 viewModel.attachFindingEvidence(itemId, photoUri, lat, lng, notes)
             },
             liveStop = uiState.criticalEvidencePending,
+            onAcknowledge = { viewModel.acknowledgeCriticalStop() },
             onContinue = { showCriticalDialog = false }
         )
     }

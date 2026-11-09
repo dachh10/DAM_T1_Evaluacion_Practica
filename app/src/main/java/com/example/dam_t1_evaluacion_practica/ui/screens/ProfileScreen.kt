@@ -78,7 +78,8 @@ fun ProfileScreen(
                 title = "Perfil del Inspector",
                 subtitle = "Credenciales y configuración",
                 onNotificationsClick = {},
-                onProfileClick = { onTabSelected(MainTab.PERFIL) }
+                onProfileClick = { onTabSelected(MainTab.PERFIL) },
+                initials = InspectorProfile.initialsOf(uiState.currentUser)
             )
         },
         bottomBar = {
@@ -215,7 +216,7 @@ fun ProfileScreen(
                         fontWeight = FontWeight.Bold,
                         color = OnSurface
                     )
-                    CredentialRow(label = "Cédula STPS", value = InspectorProfile.CEDULA)
+                    CredentialRow(label = "Cédula STPS", value = userCedula)
                     CredentialRow(label = "Certificación DC-5", value = InspectorProfile.DC5)
                     CredentialRow(label = "Código de Certificación", value = InspectorProfile.CERT_CODE)
                 }

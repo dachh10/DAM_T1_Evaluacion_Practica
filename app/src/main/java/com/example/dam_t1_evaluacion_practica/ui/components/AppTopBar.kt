@@ -56,6 +56,7 @@ fun AppTopBar(
     onProfileClick: () -> Unit = {},
     title: String? = null,
     subtitle: String? = null,
+    initials: String = InspectorProfile.INITIALS,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -158,7 +159,7 @@ fun AppTopBar(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = InspectorProfile.INITIALS,
+                        text = initials,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = OnPrimary

@@ -50,7 +50,7 @@ class InspectionRepositoryImpl(
 
     override suspend fun saveInspection(record: InspectionSessionRecord): Long =
         withContext(Dispatchers.IO) {
-            val id = inspectionDao.insertInspection(record.toEntity())
+            val id = inspectionDao.insertInspection(record.withEvidenceUrls().toEntity())
             // Mark all incidences of this inspection as PENDING so the worker pushes them
             val incidences = incidenceDao.findIncidencesByInspection(record.inspectionId)
             incidences.forEach { inc ->
@@ -62,7 +62,7 @@ class InspectionRepositoryImpl(
 
     override suspend fun updateInspection(record: InspectionSessionRecord) =
         withContext(Dispatchers.IO) {
-            inspectionDao.updateInspection(record.toEntity())
+            inspectionDao.updateInspection(record.withEvidenceUrls().toEntity())
             // Mark all incidences of this inspection as PENDING so the worker pushes them
             val incidences = incidenceDao.findIncidencesByInspection(record.inspectionId)
             incidences.forEach { inc ->
@@ -111,4 +111,24 @@ class InspectionRepositoryImpl(
 
     override fun observeEvidence(inspectionId: String): Flow<List<Evidence>> =
         evidenceRepository.observe(inspectionId)
+
+    /**
+     * Replaces the device-local photo reference of every finding with the Cloudinary
+     * `secure_url` already persisted in the evidence queue, when available. This is what
+     * makes the Firestore document carry a usable image URL instead of a `content://`
+     * reference that only exists on this device.
+     */
+    private suspend fun InspectionSessionRecord.withEvidenceUrls(): InspectionSessionRecord {
+        val remoteUrls = evidenceDao.getByInspection(inspectionId)
+            .mapNotNull { evidence ->
+                evidence.remoteUrl?.let { url -> evidence.itemId to url }
+            }
+            .toMap()
+        if (remoteUrls.isEmpty()) return this
+        return copy(
+            findings = findings.map { finding ->
+                remoteUrls[finding.itemId]?.let { url -> finding.copy(photoUri = url) } ?: finding
+            }
+        )
+    }
 }

@@ -121,7 +121,10 @@ enum class AuditType(val label: String, val icon: ImageVector) {
 @Composable
 fun NewInspectionScreen(
     onBack: () -> Unit = {},
-    onProceedToInspection: (companyName: String, zoneName: String, auditType: AuditType) -> Unit = { _, _, _ -> }
+    onProceedToInspection: (companyName: String, zoneName: String, auditType: AuditType) -> Unit = { _, _, _ -> },
+    inspectorName: String = InspectorProfile.NAME,
+    inspectorCedula: String = InspectorProfile.CEDULA,
+    inspectorInitials: String = InspectorProfile.INITIALS
 ) {
     val context = LocalContext.current
 
@@ -294,7 +297,10 @@ fun NewInspectionScreen(
                     selectedZone = selectedZone,
                     onSelectZone = { selectedZone = it },
                     selectedAuditType = selectedAuditType,
-                    onSelectAuditType = { selectedAuditType = it }
+                    onSelectAuditType = { selectedAuditType = it },
+                    inspectorName = inspectorName,
+                    inspectorCedula = inspectorCedula,
+                    inspectorInitials = inspectorInitials
                 )
 
                 // Tarjeta 3: Normativas Oficiales Vinculadas
@@ -783,7 +789,10 @@ private fun FacilityAndZoneCard(
     selectedZone: ZoneOption,
     onSelectZone: (ZoneOption) -> Unit,
     selectedAuditType: AuditType,
-    onSelectAuditType: (AuditType) -> Unit
+    onSelectAuditType: (AuditType) -> Unit,
+    inspectorName: String,
+    inspectorCedula: String,
+    inspectorInitials: String
 ) {
     val currentDateText = remember {
         val formatter = SimpleDateFormat("EEEE, d 'de' MMMM 'de' yyyy", Locale("es", "MX"))
@@ -1030,7 +1039,7 @@ private fun FacilityAndZoneCard(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = InspectorProfile.INITIALS,
+                                text = inspectorInitials,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = OnPrimary
@@ -1038,13 +1047,13 @@ private fun FacilityAndZoneCard(
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = InspectorProfile.NAME,
+                                text = inspectorName,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = OnSurface
                             )
                             Text(
-                                text = "Céd. ${InspectorProfile.CEDULA} • ${InspectorProfile.LICENSE}",
+                                text = "Céd. $inspectorCedula • ${InspectorProfile.LICENSE}",
                                 fontSize = 12.sp,
                                 color = OnSurfaceVariant
                             )

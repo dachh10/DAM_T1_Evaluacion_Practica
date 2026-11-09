@@ -1,5 +1,6 @@
 package com.example.dam_t1_evaluacion_practica.data.remote.cloudinary
 
+import com.example.dam_t1_evaluacion_practica.BuildConfig
 import com.example.dam_t1_evaluacion_practica.domain.model.Evidence
 import com.example.dam_t1_evaluacion_practica.domain.model.EvidenceStatus
 import org.junit.Assert.assertEquals
@@ -34,8 +35,9 @@ class CloudinaryEvidenceUploaderTest {
     }
 
     @Test
-    fun `preset constant is ml_default`() {
-        assertEquals("ml_default", CloudinaryEvidenceUploader.PRESET)
+    fun `preset comes from the build configuration`() {
+        assertEquals(BuildConfig.CLOUDINARY_UPLOAD_PRESET, CloudinaryEvidenceUploader.PRESET)
+        assertEquals(BuildConfig.CLOUDINARY_CLOUD_NAME, CloudinaryEvidenceUploader.CLOUD_NAME)
     }
 
     @Test

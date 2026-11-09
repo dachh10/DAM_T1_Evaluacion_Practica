@@ -21,6 +21,7 @@ import com.example.dam_t1_evaluacion_practica.domain.model.SyncState
 object InspectionRemoteMapper {
 
     const val KEY_INSPECTION_ID = "inspectionId"
+    const val KEY_PARENT_INSPECTION_ID = "parentInspectionId"
     const val KEY_FOLIO = "folio"
     const val KEY_OWNER_UID = "ownerUid"
     const val KEY_USER_EMAIL = "userEmail"
@@ -48,6 +49,7 @@ object InspectionRemoteMapper {
     /** Builds the remote document for [record]. `deleted` is always written as `false`. */
     fun toMap(record: InspectionSessionRecord): Map<String, Any?> = mapOf(
         KEY_INSPECTION_ID to record.inspectionId,
+        KEY_PARENT_INSPECTION_ID to record.parentInspectionId,
         KEY_FOLIO to record.folio,
         KEY_OWNER_UID to record.ownerUid,
         KEY_USER_EMAIL to record.userEmail,
@@ -82,6 +84,7 @@ object InspectionRemoteMapper {
         InspectionSessionRecord(
             folio = map[KEY_FOLIO] as? String ?: "",
             inspectionId = inspectionId,
+            parentInspectionId = map[KEY_PARENT_INSPECTION_ID] as? String,
             userEmail = map[KEY_USER_EMAIL] as? String ?: "",
             companyName = map[KEY_COMPANY_NAME] as? String ?: "",
             zoneName = map[KEY_ZONE_NAME] as? String ?: "",

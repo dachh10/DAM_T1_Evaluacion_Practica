@@ -67,7 +67,8 @@ fun DashboardScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             AppTopBar(
                 onNotificationsClick = {},
-                onProfileClick = { onTabSelected(MainTab.PERFIL) }
+                onProfileClick = { onTabSelected(MainTab.PERFIL) },
+                initials = InspectorProfile.initialsOf(uiState.currentUser)
             )
             Column(
                 modifier = Modifier
@@ -77,7 +78,7 @@ fun DashboardScreen(
                     .padding(top = 16.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                WelcomeCard(recordsCount = records.size)
+                WelcomeCard(recordsCount = records.size, userName = InspectorProfile.nameOf(uiState.currentUser))
                 StartInspectionButton(onClick = onNavigateToNewInspection)
                 RealStatsCard(records = records)
                 HistorialAccessCard(onClick = onOpenHistorial)
@@ -93,7 +94,7 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun WelcomeCard(recordsCount: Int) {
+private fun WelcomeCard(recordsCount: Int, userName: String) {
     val currentDate = SimpleDateFormat("EEEE, dd 'de' MMMM 'de' yyyy", Locale("es", "MX"))
         .format(Date())
         .replaceFirstChar { it.uppercase() }
@@ -102,7 +103,7 @@ private fun WelcomeCard(recordsCount: Int) {
         Column {
             Text(currentDate, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = OnSurfaceVariant, letterSpacing = 0.8.sp)
             Spacer(Modifier.height(2.dp))
-            Text("Hola, ${InspectorProfile.NAME}", fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = OnSurface)
+            Text("Hola, $userName", fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = OnSurface)
             Text(InspectorProfile.LICENSE, fontSize = 14.sp, color = OnSurfaceVariant)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

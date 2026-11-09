@@ -133,10 +133,17 @@ fun InspectionDetailScreen(
     record: InspectionSessionRecord,
     onBack: () -> Unit = {},
     onUpdateStatus: (IncidenceStatus) -> Unit = {},
+    onReinspect: () -> Unit = {},
     viewModel: InspectionViewModel? = null
 ) {
     val context = LocalContext.current
     val (accent, statusLabel) = detailStatus(record)
+    // A reinspection points back to the critical dictamen it re-evaluates.
+    val parentFolio = record.parentInspectionId?.let { parentId ->
+        viewModel?.uiState?.value?.savedInspections
+            ?.firstOrNull { it.inspectionId == parentId }
+            ?.folio
+    }
     val initialModuleKey = record.modules.firstOrNull()?.moduleTitle
     val expandedModules = remember(record.folio) {
         mutableStateMapOf<String, Boolean>().apply {
@@ -190,6 +197,12 @@ fun InspectionDetailScreen(
                             DetailInfoRow(label = "Área / Zona", value = record.zoneName)
                             DetailInfoRow(label = "Tipo de auditoría", value = record.auditType)
                             DetailInfoRow(label = "Fecha", value = formatDate(record.timestamp))
+                            if (record.parentInspectionId != null) {
+                                DetailInfoRow(
+                                    label = "Reinspección de",
+                                    value = parentFolio ?: "Dictamen anterior"
+                                )
+                            }
                             record.scheduledReinspectionAt?.let { scheduledAt ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -314,6 +327,27 @@ fun InspectionDetailScreen(
                                 syncState = record.syncState,
                                 onRetry = { viewModel?.retrySync(record.inspectionId) }
                             )
+                            // Severity drives the action, not the closing status: even a
+                            // dictamen already in mitigation or closed can be re-evaluated.
+                            val canReinspect = record.criticalStop || record.reinspectionDue
+                            if (canReinspect) {
+                                Button(
+                                    onClick = onReinspect,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = NavyPrimary,
+                                        contentColor = OnPrimary
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Replay,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Reinspeccionar", fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }

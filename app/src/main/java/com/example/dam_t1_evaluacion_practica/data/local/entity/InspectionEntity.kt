@@ -6,6 +6,8 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "inspections")
 data class InspectionEntity(
     @PrimaryKey val inspectionId: String,
+    /** Links a reinspection to the critical dictamen it re-evaluates. */
+    val parentInspectionId: String? = null,
     val folio: String,
     val userEmail: String = "",
     val ownerUid: String = "",

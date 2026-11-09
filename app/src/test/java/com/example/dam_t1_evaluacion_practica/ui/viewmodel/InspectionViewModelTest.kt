@@ -4,6 +4,7 @@ import com.example.dam_t1_evaluacion_practica.domain.repository.InspectionReposi
 import com.example.dam_t1_evaluacion_practica.domain.model.ChecklistItem
 import com.example.dam_t1_evaluacion_practica.domain.model.CriticalityLevel
 import com.example.dam_t1_evaluacion_practica.domain.model.IncidenceStatus
+import com.example.dam_t1_evaluacion_practica.domain.model.InspectionSessionRecord
 import com.example.dam_t1_evaluacion_practica.domain.model.Normativ
 import com.example.dam_t1_evaluacion_practica.domain.model.User
 import io.mockk.coEvery
@@ -175,7 +176,7 @@ class InspectionViewModelTest {
 
         var state = viewModel.uiState.value
         assertEquals(84, state.overallComplianceScore) // floor(28 * 100 / 33) == 84
-        assertFalse(state.reinspectionDue)             // reinspection is only evaluated at finish
+        assertFalse(state.reinspectionDue)             // one point is still unanswered
 
         // Marking the remaining HIGH item non-compliant fires the critical stop LIVE...
         viewModel.submitAnswer(items.first { it.id == "high_6" }, isCompliant = false)
@@ -183,10 +184,12 @@ class InspectionViewModelTest {
         state = viewModel.uiState.value
         assertEquals(84, state.overallComplianceScore)
         assertTrue(state.criticalStopTriggered) // HIGH non-compliant fires immediately, live
-        assertFalse(state.reinspectionDue)      // ...but reinspection still waits for finish
+        // Every applicable point is answered and the module sits below 85, so the
+        // reinspection is scheduled without waiting for "Finalizar Módulo".
+        assertTrue(state.reinspectionDue)
 
         viewModel.finishModule("Modulo EPP", items)
-        assertTrue(viewModel.uiState.value.reinspectionDue) // score 84 < 85 => reinspection at finish
+        assertTrue(viewModel.uiState.value.reinspectionDue)
     }
 
     @Test
@@ -242,7 +245,7 @@ class InspectionViewModelTest {
     }
 
     @Test
-    fun `compliant answer on a pending HIGH finding clears criticalEvidencePending`() {
+    fun `correcting a pending HIGH finding clears the evidence gate and the stop`() {
         val items = checklistSevenHigh()
         viewModel.initChecklist(items)
 
@@ -252,7 +255,8 @@ class InspectionViewModelTest {
         viewModel.submitAnswer(items.first(), isCompliant = true) // inspector corrects the answer
 
         assertFalse(viewModel.uiState.value.criticalEvidencePending)
-        assertTrue(viewModel.uiState.value.criticalStopTriggered) // flag stays true once fired
+        // A corrected finding no longer justifies the stop, so the session flag clears.
+        assertFalse(viewModel.uiState.value.criticalStopTriggered)
     }
 
     // --- criticalPendingItemIds: derived set of item ids still demanding evidence ---
@@ -284,20 +288,19 @@ class InspectionViewModelTest {
     }
 
     @Test
-    fun `NA answer on a HIGH item does not fire the LIVE critical stop but keeps counting for the score`() {
+    fun `NA answer on a HIGH item neither fires the stop nor penalizes the score`() {
         val items = checklistSevenHigh()
         viewModel.initChecklist(items)
 
         viewModel.setAnswerNA(items.first())
+        items.drop(1).forEach { viewModel.submitAnswer(it, isCompliant = true) }
 
         val state = viewModel.uiState.value
-        // N/A is not a real non-conformance: it must never open the evidence dialog...
+        // N/A is not a real non-conformance: no stop, and the point leaves the
+        // denominator so the remaining compliant points score 100.
+        assertEquals(100, state.overallComplianceScore)
         assertFalse(state.criticalStopTriggered)
-        // ...but it stores false, so finishing below 85 still schedules a reinspection.
-        viewModel.finishModule("Modulo EPP", items)
-        val finished = viewModel.uiState.value
-        assertTrue(finished.sessionModules.any { it.moduleTitle == "Modulo EPP" && it.reinspectionDue })
-        assertTrue(finished.criticalStopTriggered) // score-based stop on finish, not a live N/A fire
+        assertFalse(state.reinspectionDue)
     }
 
     @Test
@@ -539,21 +542,21 @@ class InspectionViewModelTest {
     // --- restored modules: score recomputed, stop flags stay clear ---
 
     @Test
-    fun `initChecklist restored module recomputes score without stop flags`() {
+    fun `initChecklist re-derives the session stop from recorded modules`() {
         val items = checklistSevenHigh()
         viewModel.initChecklist(items)
         items.take(5).forEach { viewModel.submitAnswer(it, isCompliant = true) } // 25/35 = 71
         viewModel.finishModule("Modulo EPP", items)
         assertTrue(viewModel.uiState.value.criticalStopTriggered)
 
-        // Re-opening the finished module restores answers and recomputes the score,
-        // but never re-triggers the live dialog.
+        // Re-opening the module updates the live module score, but the session keep the
+        // stop recorded by the module that closed at 71.
         viewModel.initChecklist(items, items.associate { it.id to true })
 
         val state = viewModel.uiState.value
         assertEquals(100, state.overallComplianceScore)
-        assertFalse(state.criticalStopTriggered)
-        assertFalse(state.reinspectionDue)
+        assertTrue(state.criticalStopTriggered)
+        assertTrue(state.reinspectionDue)
     }
 
     // --- submitAnswer: re-submission preserves evidence attached via the dialog ---
@@ -644,6 +647,210 @@ class InspectionViewModelTest {
         assertTrue(record.criticalStop)
         assertTrue(record.reinspectionDue)
         assertEquals(IncidenceStatus.OPEN, record.status)
+    }
+
+    // --- reinspection flow: linked child session and parent resolution ---
+
+    private fun saveCriticalParent(): InspectionSessionRecord {
+        val items = checklistSevenHigh()
+        viewModel.initChecklist(items)
+        items.take(5).forEach { viewModel.submitAnswer(it, isCompliant = true) } // 25/35 = 71
+        viewModel.finishModule("Modulo EPP", items)
+        return viewModel.saveDictamen()
+    }
+
+    @Test
+    fun `startReinspection inherits context, links the parent and clears the session`() {
+        val parent = saveCriticalParent()
+        assertTrue(parent.criticalStop)
+        assertEquals(IncidenceStatus.OPEN, parent.status)
+
+        viewModel.startReinspection(parent)
+
+        val state = viewModel.uiState.value
+        assertEquals(parent.companyName, state.companyName)
+        assertEquals(parent.zoneName, state.zoneName)
+        assertEquals(parent.auditType, state.auditType)
+        assertEquals(parent.inspectionId, state.parentInspectionId)
+        assertEquals(parent.folio, state.parentInspectionFolio)
+        assertTrue(state.answers.isEmpty())
+        assertTrue(state.sessionModules.isEmpty())
+        assertFalse(state.criticalStopTriggered)
+    }
+
+    @Test
+    fun `saving a conforming reinspection closes the parent dictamen`() {
+        val parent = saveCriticalParent()
+        viewModel.startReinspection(parent)
+
+        val items = checklistSevenHigh()
+        viewModel.initChecklist(items)
+        items.forEach { viewModel.submitAnswer(it, isCompliant = true) } // 100, conforming
+        viewModel.finishModule("Modulo EPP", items)
+        val child = viewModel.saveDictamen()
+
+        assertEquals(parent.inspectionId, child.parentInspectionId)
+        assertEquals(IncidenceStatus.CLOSED, child.status)
+
+        val storedParent = viewModel.uiState.value.savedInspections
+            .first { it.inspectionId == parent.inspectionId }
+        assertEquals(IncidenceStatus.CLOSED, storedParent.status)
+        assertFalse(storedParent.criticalStop)
+        assertFalse(storedParent.reinspectionDue)
+        assertNull(storedParent.scheduledReinspectionAt)
+    }
+
+    @Test
+    fun `saving a failed reinspection keeps the parent critical and clears its pending flag`() {
+        val parent = saveCriticalParent()
+        viewModel.startReinspection(parent)
+
+        val items = checklistSevenHigh()
+        viewModel.initChecklist(items)
+        items.take(5).forEach { viewModel.submitAnswer(it, isCompliant = true) } // still 71
+        viewModel.finishModule("Modulo EPP", items)
+        val child = viewModel.saveDictamen()
+
+        assertTrue(child.criticalStop)
+        assertTrue(child.reinspectionDue)
+
+        val storedParent = viewModel.uiState.value.savedInspections
+            .first { it.inspectionId == parent.inspectionId }
+        assertEquals(IncidenceStatus.OPEN, storedParent.status)
+        assertTrue(storedParent.criticalStop)
+        assertFalse(storedParent.reinspectionDue)
+        assertNull(storedParent.scheduledReinspectionAt)
+    }
+
+    @Test
+    fun `startReinspection allows re-evaluating a closed critical dictamen`() {
+        val parent = saveCriticalParent()
+        viewModel.updateRecordStatus(parent.folio, IncidenceStatus.CLOSED)
+        val closedParent = viewModel.uiState.value.savedInspections
+            .first { it.inspectionId == parent.inspectionId }
+        assertEquals(IncidenceStatus.CLOSED, closedParent.status)
+
+        viewModel.startReinspection(closedParent)
+
+        val state = viewModel.uiState.value
+        assertEquals(parent.inspectionId, state.parentInspectionId)
+        assertEquals(parent.folio, state.parentInspectionFolio)
+        assertTrue(state.answers.isEmpty())
+        assertTrue(state.sessionModules.isEmpty())
+        assertFalse(state.criticalStopTriggered)
+    }
+
+    @Test
+    fun `a failed reinspection reopens a closed critical parent`() {
+        val parent = saveCriticalParent()
+        viewModel.updateRecordStatus(parent.folio, IncidenceStatus.CLOSED)
+        val closedParent = viewModel.uiState.value.savedInspections
+            .first { it.inspectionId == parent.inspectionId }
+
+        viewModel.startReinspection(closedParent)
+
+        val items = checklistSevenHigh()
+        viewModel.initChecklist(items)
+        items.take(5).forEach { viewModel.submitAnswer(it, isCompliant = true) } // still 71
+        viewModel.finishModule("Modulo EPP", items)
+        viewModel.saveDictamen()
+
+        val storedParent = viewModel.uiState.value.savedInspections
+            .first { it.inspectionId == parent.inspectionId }
+        assertEquals(IncidenceStatus.OPEN, storedParent.status)
+        assertTrue(storedParent.criticalStop)
+        assertFalse(storedParent.reinspectionDue)
+        assertNull(storedParent.scheduledReinspectionAt)
+    }
+
+    // --- N/A scoring, per-point evidence rules, zone score and work stoppage ---
+
+    @Test
+    fun `calculateScore excludes N-A points from the denominator`() {
+        val items = listOf(
+            item("h", CriticalityLevel.HIGH),
+            item("m", CriticalityLevel.MEDIUM),
+            item("l", CriticalityLevel.LOW)
+        )
+
+        val score = viewModel.calculateScore(items, mapOf("h" to true, "l" to false), setOf("m"))
+
+        assertEquals(83, score) // 5 of 6 applicable points
+    }
+
+    @Test
+    fun `requiresPhotoEvidence drives the photo gate independently of criticality`() {
+        val mediumWithPhoto = ChecklistItem(
+            id = "m_photo",
+            description = "Extintor sin presión",
+            normativ = Normativ(code = "NOM-TEST", description = "Norma de prueba"),
+            criticalityLevel = CriticalityLevel.MEDIUM,
+            requiresPhotoEvidence = true
+        )
+        val highWithoutPhoto = ChecklistItem(
+            id = "h_note",
+            description = "Arnés con fisuras",
+            normativ = Normativ(code = "NOM-TEST", description = "Norma de prueba"),
+            criticalityLevel = CriticalityLevel.HIGH,
+            requiresPhotoEvidence = false
+        )
+        viewModel.initChecklist(listOf(mediumWithPhoto, highWithoutPhoto))
+
+        viewModel.submitAnswer(mediumWithPhoto, isCompliant = false, notes = "sin foto")
+        assertTrue(viewModel.uiState.value.criticalPendingItemIds.contains("m_photo"))
+
+        // HIGH without the photo flag only owes the critical-stop note.
+        viewModel.submitAnswer(highWithoutPhoto, isCompliant = false, notes = "fisura")
+        assertFalse(viewModel.uiState.value.criticalPendingItemIds.contains("h_note"))
+    }
+
+    @Test
+    fun `critical stop locks new answers until the stoppage is acknowledged`() {
+        val items = checklistSevenHigh()
+        viewModel.initChecklist(items)
+        viewModel.submitAnswer(items.first(), isCompliant = false, notes = "fisura")
+
+        assertTrue(viewModel.uiState.value.criticalStopTriggered)
+        assertTrue(viewModel.uiState.value.answersLocked)
+
+        viewModel.acknowledgeCriticalStop()
+
+        assertFalse(viewModel.uiState.value.answersLocked)
+    }
+
+    @Test
+    fun `correctCriticalAnswer clears the stop and unlocks the walkthrough`() {
+        val items = checklistSevenHigh()
+        viewModel.initChecklist(items)
+        val first = items.first()
+        viewModel.submitAnswer(first, isCompliant = false, notes = "se registró por error")
+        assertTrue(viewModel.uiState.value.answersLocked)
+
+        viewModel.correctCriticalAnswer(first)
+
+        val state = viewModel.uiState.value
+        assertTrue(state.answers[first.id] == true)
+        assertTrue(state.sessionFindings.none { it.itemId == first.id })
+        assertFalse(state.criticalStopTriggered)
+        assertFalse(state.answersLocked)
+        assertEquals(14, state.overallComplianceScore) // 5 of 35 points
+    }
+
+    @Test
+    fun `zone score evaluates the consolidated modules not only each module alone`() {
+        val items = checklistSevenHigh()
+        viewModel.initChecklist(items)
+        items.take(4).forEach { viewModel.submitAnswer(it, isCompliant = true) }
+        viewModel.finishModule("Modulo EPP", items) // 20/35 = 57
+
+        viewModel.initChecklist(items)
+        items.forEach { viewModel.submitAnswer(it, isCompliant = true) }
+        viewModel.finishModule("Modulo Maquinaria", items) // 35/35 = 100
+
+        val modules = viewModel.uiState.value.sessionModules
+        assertEquals(78, viewModel.consolidatedScore(modules)) // (20 + 35) / 70
+        assertTrue(viewModel.uiState.value.criticalStopTriggered)
+        assertTrue(viewModel.uiState.value.reinspectionDue)
     }
 
     // --- User Authentication & Per-User Isolation Tests ---

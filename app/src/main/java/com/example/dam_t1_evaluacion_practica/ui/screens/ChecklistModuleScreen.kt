@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,7 +47,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -112,8 +115,41 @@ fun ChecklistModuleScreen(
     var showCriticalDialog by remember { mutableStateOf(false) }
     var dialogIsLive by remember { mutableStateOf(false) }
     var selectedNormativ by remember { mutableStateOf<Normativ?>(null) }
+    var correctTarget by remember { mutableStateOf<ChecklistItem?>(null) }
     val captureLocation = rememberLocationCapture()
 
+    // A critical stop freezes new answers until the stoppage is explicitly acknowledged;
+    // reopening a module with an unacknowledged stop must show the dialog again.
+    LaunchedEffect(uiState.answersLocked) {
+        if (uiState.answersLocked) {
+            dialogIsLive = uiState.criticalNonCompliantItemIds.isNotEmpty()
+            showCriticalDialog = true
+        }
+    }
+
+    correctTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { correctTarget = null },
+            title = { Text("¿Corregir respuesta?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "El punto quedará como conforme y se retirará el paro crítico de este hallazgo. " +
+                        "Usa esta opción solo si la respuesta se registró por error."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.correctCriticalAnswer(target)
+                        correctTarget = null
+                    }
+                ) { Text("Corregir") }
+            },
+            dismissButton = {
+                TextButton(onClick = { correctTarget = null }) { Text("Cancelar") }
+            }
+        )
+    }
 
     if (showCriticalDialog) {
         val moduleItemIds = remember(uiState.currentChecklist) {
@@ -127,6 +163,7 @@ fun ChecklistModuleScreen(
                 viewModel.attachFindingEvidence(itemId, photoUri, lat, lng, notes)
             },
             liveStop = dialogIsLive,
+            onAcknowledge = { viewModel.acknowledgeCriticalStop() },
             onContinue = {
                 showCriticalDialog = false
                 if (!dialogIsLive) onFinishModule()
@@ -145,17 +182,9 @@ fun ChecklistModuleScreen(
     val answeredCount = uiState.answers.size
     val totalCount = uiState.currentChecklist.size
 
-    // Item ids of HIGH findings that still demand mandatory evidence (photo OR note):
-    // those rows keep "Conforme"/"N/A" locked so the finding cannot be erased while
-    // the evidence gate is open.
-    val pendingCriticalItemIds = uiState.sessionFindings
-        .filter {
-            it.criticalityLevel == CriticalityLevel.HIGH &&
-                !it.isNA &&
-                (it.photoUri.isNullOrBlank() || it.notes.isNullOrBlank())
-        }
-        .map { it.itemId }
-        .toSet()
+    // Item ids whose mandatory evidence is still missing, honoring the point's own
+    // requiresPhotoEvidence flag plus the critical-stop note rule.
+    val pendingCriticalItemIds = uiState.criticalPendingItemIds
 
     // Item ids of EVERY HIGH non-compliant finding (evidence attached or not): those rows
     // lock "Conforme"/"N/A" FOREVER so a documented critical finding can never be flipped
@@ -189,7 +218,9 @@ fun ChecklistModuleScreen(
                 auditType = uiState.auditType,
                 normCode = normCode,
                 answeredCount = answeredCount,
-                totalCount = totalCount
+                totalCount = totalCount,
+                inspectorName = InspectorProfile.nameOf(uiState.currentUser),
+                inspectorInitials = InspectorProfile.initialsOf(uiState.currentUser)
             )
 
             LazyColumn(
@@ -213,8 +244,10 @@ fun ChecklistModuleScreen(
                         captureLocation = captureLocation,
                         evidenceLocked = item.id in pendingCriticalItemIds,
                         answerLocked = item.id in lockedHighItemIds,
+                        allLocked = uiState.answersLocked,
                         finding = findingsByItem[item.id],
                         onNormClick = { selectedNormativ = it },
+                        onCorrectAnswer = { correctTarget = item },
                         onSelectConforme = {
                             viewModel.markNA(item.id, false)
                             viewModel.submitAnswer(item, isCompliant = true, photoUri = null, notes = null)
@@ -227,8 +260,8 @@ fun ChecklistModuleScreen(
                             // mechanism as the finish path). The dialog closes onto the
                             // module so the inspector can keep answering the checklist.
                             val afterSubmit = viewModel.uiState.value
-                            if (afterSubmit.criticalStopTriggered && afterSubmit.criticalEvidencePending) {
-                                dialogIsLive = true
+                            if (afterSubmit.answersLocked) {
+                                dialogIsLive = afterSubmit.criticalNonCompliantItemIds.isNotEmpty()
                                 showCriticalDialog = true
                             }
                         },
@@ -258,7 +291,15 @@ fun ChecklistModuleScreen(
                     // finalizing is disabled until the evidence is attached.
                     AnimatedVisibility(visible = uiState.criticalEvidencePending) {
                         Text(
-                            text = "Evidencia requerida: adjunta foto y nota para los hallazgos críticos antes de finalizar.",
+                            text = "Evidencia requerida: completa la foto y la observación que exige cada hallazgo antes de finalizar.",
+                            color = ErrorColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    AnimatedVisibility(visible = uiState.answersLocked) {
+                        Text(
+                            text = "Labores detenidas: confirma la detención en el aviso de paro crítico para continuar el recorrido.",
                             color = ErrorColor,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
@@ -279,14 +320,15 @@ fun ChecklistModuleScreen(
                             onClick = {
 
                                 viewModel.finishModule(module.title, uiState.currentChecklist)
-                                if (viewModel.uiState.value.criticalStopTriggered) {
-                                    dialogIsLive = false
+                                val afterFinish = viewModel.uiState.value
+                                if (afterFinish.criticalEvidencePending || afterFinish.answersLocked) {
+                                    dialogIsLive = afterFinish.criticalNonCompliantItemIds.isNotEmpty()
                                     showCriticalDialog = true
                                 } else {
                                     onFinishModule()
                                 }
                             },
-                            enabled = !uiState.criticalEvidencePending,
+                            enabled = !uiState.criticalEvidencePending && !uiState.answersLocked,
                             modifier = Modifier.weight(1.4f),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -392,7 +434,9 @@ private fun ModuleContextCard(
     auditType: String,
     normCode: String,
     answeredCount: Int,
-    totalCount: Int
+    totalCount: Int,
+    inspectorName: String,
+    inspectorInitials: String
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -513,14 +557,14 @@ private fun ModuleContextCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = InspectorProfile.INITIALS,
+                        text = inspectorInitials,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = OnPrimary
                     )
                 }
                 Text(
-                    text = "Auditor: ${InspectorProfile.NAME}",
+                    text = "Auditor: $inspectorName",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     color = OnSurfaceVariant
@@ -538,8 +582,10 @@ private fun ChecklistItemModuleRow(
     captureLocation: LocationCapture,
     evidenceLocked: Boolean = false,
     answerLocked: Boolean = false,
+    allLocked: Boolean = false,
     finding: SessionFinding? = null,
     onNormClick: (Normativ) -> Unit = {},
+    onCorrectAnswer: () -> Unit = {},
     onSelectConforme: () -> Unit,
     onSelectNoConf: (photoUri: String?, notes: String, lat: Double?, lng: Double?) -> Unit,
     onSelectNA: () -> Unit
@@ -658,11 +704,11 @@ private fun ChecklistItemModuleRow(
                     selectedBg = SuccessColor,
                     selectedContent = Color.White,
                     unselectedContent = OnSurface,
-                    enabled = !answerLocked,
+                    enabled = !answerLocked && !allLocked,
                     modifier = Modifier.weight(1f),
-                    // Defensive: once a HIGH finding exists it can never be flipped back
-                    // to compliant, even if the row is reused after a snapshot restore.
-                    onClick = { if (!answerLocked) onSelectConforme() }
+                    // A HIGH finding stays locked against flipping back to compliant; the
+                    // only way out is the explicit "Corregir" action (with confirmation).
+                    onClick = { if (!answerLocked && !allLocked) onSelectConforme() }
                 )
                 TriSelectButton(
                     label = "No Conf.",
@@ -670,8 +716,9 @@ private fun ChecklistItemModuleRow(
                     selectedBg = ErrorColor,
                     selectedContent = Color.White,
                     unselectedContent = OnSurface,
+                    enabled = !allLocked,
                     modifier = Modifier.weight(1f),
-                    onClick = { onSelectNoConf(savedUriString, notes, rowLat, rowLng) }
+                    onClick = { if (!allLocked) onSelectNoConf(savedUriString, notes, rowLat, rowLng) }
                 )
                 TriSelectButton(
                     label = "N/A",
@@ -679,10 +726,23 @@ private fun ChecklistItemModuleRow(
                     selectedBg = AmberSecondary,
                     selectedContent = OnAmberContainer,
                     unselectedContent = OnSurface,
-                    enabled = !answerLocked,
+                    enabled = !answerLocked && !allLocked,
                     modifier = Modifier.weight(1f),
-                    onClick = onSelectNA
+                    onClick = { if (!answerLocked && !allLocked) onSelectNA() }
                 )
+            }
+
+            if (answerLocked) {
+                TextButton(
+                    onClick = onCorrectAnswer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Corregir respuesta registrada por error",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
 
             // Zona de evidencia
@@ -766,7 +826,7 @@ private fun ChecklistItemModuleRow(
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = "Evidencia obligatoria para este hallazgo (Riesgo Alto)",
+                        text = "Evidencia obligatoria para este hallazgo",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = ErrorColor

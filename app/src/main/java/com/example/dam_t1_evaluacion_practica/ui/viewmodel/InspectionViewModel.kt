@@ -33,6 +33,23 @@ object InspectorProfile {
     const val LICENSE = "Auditor Nivel 3"
     const val DC5 = "DC-5"
     const val CERT_CODE = "EC0391.01"
+
+    /** Display name of the authenticated inspector, falling back to the demo identity. */
+    fun nameOf(user: User?): String =
+        user?.name?.trim()?.takeIf { it.isNotEmpty() } ?: NAME
+
+    /** Cédula of the authenticated inspector, falling back to the demo identity. */
+    fun cedulaOf(user: User?): String =
+        user?.cedula?.trim()?.takeIf { it.isNotEmpty() } ?: CEDULA
+
+    /** Avatar initials derived from the authenticated name; falls back to the demo initials. */
+    fun initialsOf(user: User?): String = nameOf(user)
+        .split(" ")
+        .filter { it.isNotBlank() && !it.startsWith("Ing", ignoreCase = true) && !it.startsWith("Lic", ignoreCase = true) }
+        .mapNotNull { it.firstOrNull()?.uppercaseChar()?.toString() }
+        .take(2)
+        .joinToString("")
+        .ifBlank { INITIALS }
 }
 
 data class InspectionUiState(
@@ -41,6 +58,10 @@ data class InspectionUiState(
     val overallComplianceScore: Int = 0,
     val criticalStopTriggered: Boolean = false,
     val reinspectionDue: Boolean = false,
+    /** True once the inspector explicitly confirms the work stoppage in the dialog. */
+    val criticalStopAcknowledged: Boolean = false,
+    /** Title of the module currently open, so snapshot edits target the right module. */
+    val currentModuleTitle: String? = null,
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
     // --- Auth state ---
@@ -56,20 +77,25 @@ data class InspectionUiState(
     val naAnswers: Set<String> = emptySet(),
     val sessionModules: List<ModuleCompletion> = emptyList(),
     val sessionFindings: List<SessionFinding> = emptyList(),
-    val savedInspections: List<InspectionSessionRecord> = emptyList()
+    val savedInspections: List<InspectionSessionRecord> = emptyList(),
+    // --- Reinspection link ---
+    /** Dictamen crítico que esta sesión vuelve a evaluar, si aplica. */
+    val parentInspectionId: String? = null,
+    val parentInspectionFolio: String? = null
 ) {
     /**
-     * Item ids of the session findings that are HIGH, non-N/A and still lack mandatory
-     * evidence (photo OR note). The UI locks those rows and disables "Finalizar Módulo"
-     * while any id remains pending so a critical finding can never be saved without its
-     * evidence.
+     * Item ids of the session findings that still lack their mandatory evidence:
+     *
+     * - every HIGH finding requires a note (critical stop rule) and a photo when its
+     *   checklist point has `requiresPhotoEvidence = true`;
+     * - a MEDIUM/LOW finding that declares `requiresPhotoEvidence` requires a photo;
+     * - N/A answers never require evidence.
+     *
+     * The UI locks those rows and disables "Finalizar Módulo" while any id remains
+     * pending so a finding can never be saved without the evidence its rule demands.
      */
     val criticalPendingItemIds: Set<String>
-        get() = sessionFindings.filter { finding ->
-            finding.criticalityLevel == CriticalityLevel.HIGH &&
-                !finding.isNA &&
-                (finding.photoUri.isNullOrBlank() || finding.notes.isNullOrBlank())
-        }.map { it.itemId }.toSet()
+        get() = sessionFindings.filter { it.isEvidenceIncomplete() }.map { it.itemId }.toSet()
 
     /**
      * True when at least one session finding is HIGH, non-N/A and still lacks mandatory
@@ -90,6 +116,26 @@ data class InspectionUiState(
         get() = sessionFindings.filter { finding ->
             finding.criticalityLevel == CriticalityLevel.HIGH && !finding.isNA
         }.map { it.itemId }.toSet()
+
+    /**
+     * A critical stop halts the walkthrough: no new answers are accepted until the
+     * inspector explicitly confirms the work stoppage in the Critical Stop dialog.
+     */
+    val answersLocked: Boolean
+        get() = criticalStopTriggered && !criticalStopAcknowledged
+}
+
+/**
+ * Evidence each finding still owes, honoring the checklist point's own
+ * `requiresPhotoEvidence` flag instead of assuming every HIGH point needs a photo.
+ */
+private fun SessionFinding.isEvidenceIncomplete(): Boolean {
+    if (isNA) return false
+    // The photo is mandated by the point itself (`requiresPhotoEvidence`); the note is
+    // mandated by the critical-stop rule for HIGH findings.
+    val needsPhoto = requiresPhotoEvidence
+    val needsNote = criticalityLevel == CriticalityLevel.HIGH
+    return (needsPhoto && photoUri.isNullOrBlank()) || (needsNote && notes.isNullOrBlank())
 }
 
 class InspectionViewModel(
@@ -272,7 +318,11 @@ class InspectionViewModel(
                 sessionFindings = emptyList(),
                 answers = emptyMap(),
                 naAnswers = emptySet(),
-                criticalStopTriggered = false
+                criticalStopTriggered = false,
+                criticalStopAcknowledged = false,
+                currentModuleTitle = null,
+                parentInspectionId = null,
+                parentInspectionFolio = null
             )
         }
         observeAllInspections()
@@ -285,16 +335,26 @@ class InspectionViewModel(
         restoredNA: Set<String> = emptySet()
     ) {
         val restored = restoredAnswers.isNotEmpty()
-        val score = if (restored) calculateScore(items, restoredAnswers) else 0
+        val score = if (restored) calculateScore(items, restoredAnswers, restoredNA) else 0
 
         _uiState.update { current ->
+            // Opening another module must not clear a stop that belongs to the session;
+            // it is re-derived from the findings and the modules already recorded.
+            val flags = deriveSessionFlags(
+                items = items,
+                answers = restoredAnswers,
+                naAnswers = restoredNA,
+                findings = current.sessionFindings,
+                modules = current.sessionModules
+            )
             current.copy(
                 currentChecklist = items,
                 answers = restoredAnswers,
                 naAnswers = restoredNA,
                 overallComplianceScore = score,
-                criticalStopTriggered = false,
-                reinspectionDue = false
+                currentModuleTitle = null,
+                criticalStopTriggered = flags.criticalStop,
+                reinspectionDue = flags.reinspectionDue
             )
         }
     }
@@ -308,10 +368,40 @@ class InspectionViewModel(
                 naAnswers = emptySet(),
                 overallComplianceScore = 0,
                 criticalStopTriggered = false,
+                criticalStopAcknowledged = false,
+                currentModuleTitle = null,
                 reinspectionDue = false,
                 sessionModules = emptyList(),
                 sessionFindings = emptyList(),
+                parentInspectionId = null,
+                parentInspectionFolio = null,
                 errorMessage = null
+            )
+        }
+    }
+
+    /**
+     * Prepares a fresh session that re-evaluates [parent] (a critical or
+     * reinspection-due dictamen). The company/zone/audit type are inherited so the
+     * inspector does not retype them; the link is saved with the new dictamen and used
+     * to update the parent once the reinspection verdict is known.
+     *
+     * The closing status does not gate this: a critical dictamen can be re-evaluated
+     * even when it was already moved to mitigation or closed.
+     */
+    fun startReinspection(parent: InspectionSessionRecord) {
+        _uiState.update {
+            it.copy(
+                companyName = parent.companyName,
+                zoneName = parent.zoneName,
+                auditType = parent.auditType
+            )
+        }
+        startNewSession()
+        _uiState.update {
+            it.copy(
+                parentInspectionId = parent.inspectionId,
+                parentInspectionFolio = parent.folio
             )
         }
     }
@@ -323,6 +413,7 @@ class InspectionViewModel(
             restoredAnswers = existing?.answers ?: emptyMap(),
             restoredNA = existing?.naAnswers ?: emptySet()
         )
+        _uiState.update { it.copy(currentModuleTitle = moduleTitle) }
     }
 
     fun setSessionContext(companyName: String, zoneName: String, auditType: String) {
@@ -335,9 +426,13 @@ class InspectionViewModel(
                 naAnswers = emptySet(),
                 overallComplianceScore = 0,
                 criticalStopTriggered = false,
+                criticalStopAcknowledged = false,
+                currentModuleTitle = null,
                 reinspectionDue = false,
                 sessionModules = emptyList(),
-                sessionFindings = emptyList()
+                sessionFindings = emptyList(),
+                parentInspectionId = null,
+                parentInspectionFolio = null
             )
         }
     }
@@ -347,32 +442,17 @@ class InspectionViewModel(
         val updatedAnswers = currentState.answers.toMutableMap()
         updatedAnswers[item.id] = isCompliant
 
-        val score = calculateScore(currentState.currentChecklist, updatedAnswers)
-        val isNAAnswer = currentState.naAnswers.contains(item.id)
-        val liveCriticalStop = !isCompliant && item.criticalityLevel == CriticalityLevel.HIGH && !isNAAnswer
-
-        _uiState.update { current ->
-            current.copy(
-                answers = updatedAnswers,
-                overallComplianceScore = score,
-                criticalStopTriggered = current.criticalStopTriggered || liveCriticalStop,
-                reinspectionDue = false
-            )
-        }
-
-        val existing = _uiState.value.sessionFindings.firstOrNull { it.itemId == item.id }
-        val isNA = _uiState.value.naAnswers.contains(item.id)
+        val existing = currentState.sessionFindings.firstOrNull { it.itemId == item.id }
+        val isNA = currentState.naAnswers.contains(item.id)
         val finalPhotoUri = if (isNA) null else photoUri ?: existing?.photoUri
         val finalNotes = if (isNA) "No aplica (N/A)" else notes ?: existing?.notes
         val finalLat = if (isNA) null else lat ?: existing?.latitude
         val finalLng = if (isNA) null else lng ?: existing?.longitude
 
-        if (isCompliant) {
-            _uiState.update {
-                it.copy(sessionFindings = it.sessionFindings.filterNot { f -> f.itemId == item.id })
-            }
+        val updatedFindings = if (isCompliant) {
+            currentState.sessionFindings.filterNot { f -> f.itemId == item.id }
         } else {
-            val finding = SessionFinding(
+            currentState.sessionFindings.filterNot { f -> f.itemId == item.id } + SessionFinding(
                 itemId = item.id,
                 itemDescription = item.description,
                 normCode = item.normativ.code,
@@ -382,11 +462,42 @@ class InspectionViewModel(
                 photoUri = finalPhotoUri,
                 timestamp = System.currentTimeMillis(),
                 latitude = finalLat,
-                longitude = finalLng
+                longitude = finalLng,
+                requiresPhotoEvidence = item.requiresPhotoEvidence
             )
-            _uiState.update {
-                it.copy(sessionFindings = it.sessionFindings.filterNot { f -> f.itemId == item.id } + finding)
-            }
+        }
+
+        // Keep an already-recorded module snapshot in sync when the inspector edits a
+        // point after returning to the module, so the consolidated score never goes stale.
+        val updatedModules = updateModuleSnapshot(
+            modules = currentState.sessionModules,
+            moduleTitle = currentState.currentModuleTitle,
+            item = item,
+            answer = isCompliant,
+            naAnswers = currentState.naAnswers
+        )
+
+        val score = calculateScore(currentState.currentChecklist, updatedAnswers, currentState.naAnswers)
+        val liveCriticalStop = !isCompliant && item.criticalityLevel == CriticalityLevel.HIGH && !isNA
+        val flags = deriveSessionFlags(
+            items = currentState.currentChecklist,
+            answers = updatedAnswers,
+            naAnswers = currentState.naAnswers,
+            findings = updatedFindings,
+            modules = updatedModules
+        )
+
+        _uiState.update { current ->
+            current.copy(
+                answers = updatedAnswers,
+                overallComplianceScore = score,
+                sessionFindings = updatedFindings,
+                sessionModules = updatedModules,
+                criticalStopTriggered = flags.criticalStop,
+                reinspectionDue = flags.reinspectionDue,
+                // A fresh live stop re-arms the explicit work-stoppage confirmation.
+                criticalStopAcknowledged = if (liveCriticalStop) false else current.criticalStopAcknowledged
+            )
         }
 
         if (!isCompliant) {
@@ -411,6 +522,26 @@ class InspectionViewModel(
                 }
             }
         }
+
+        // Every newly captured photo becomes a durable evidence upload: the worker
+        // uploads it to Cloudinary and replaces the local content:// reference with
+        // the returned secure_url before the inspection is synced to Firestore.
+        val shouldRegisterEvidence = !isCompliant &&
+            !isNA &&
+            !finalPhotoUri.isNullOrBlank() &&
+            finalPhotoUri != existing?.photoUri
+        if (shouldRegisterEvidence) {
+            val photoRef = finalPhotoUri!!
+            viewModelScope.launch {
+                try {
+                    repository.registerEvidence(activeInspectionId, item.id, photoRef)
+                } catch (e: Exception) {
+                    _uiState.update {
+                        it.copy(errorMessage = "Error registrando evidencia: ${e.message}")
+                    }
+                }
+            }
+        }
     }
 
     fun attachFindingEvidence(itemId: String, photoUri: String?, lat: Double?, lng: Double?, notes: String? = null) {
@@ -430,6 +561,8 @@ class InspectionViewModel(
         val incidenceId = persistedIncidenceIds[itemId] ?: UUID.randomUUID().toString().also {
             persistedIncidenceIds[itemId] = it
         }
+        val newPhotoRef = updated.photoUri?.takeIf { it.isNotBlank() }
+        val photoChanged = newPhotoRef != null && newPhotoRef != existing.photoUri
         viewModelScope.launch {
             try {
                 repository.saveIncidence(
@@ -445,10 +578,105 @@ class InspectionViewModel(
                         notes = updated.notes
                     )
                 )
+                if (photoChanged) {
+                    repository.registerEvidence(activeInspectionId, itemId, newPhotoRef)
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "Error actualizando evidencia: ${e.message}") }
             }
         }
+    }
+
+    /**
+     * Explicit confirmation of the work stoppage. Until this is called, [InspectionUiState.answersLocked]
+     * keeps the walkthrough frozen so a critical finding cannot be buried under new answers.
+     */
+    fun acknowledgeCriticalStop() {
+        _uiState.update { it.copy(criticalStopAcknowledged = true) }
+    }
+
+    /**
+     * Lets the inspector fix a HIGH point answered as non-compliant by mistake.
+     *
+     * The correction is deliberate (the UI asks for confirmation first), removes the
+     * finding, recomputes the module and session flags and closes the persisted
+     * incidence so the correction also reaches Firestore.
+     */
+    fun correctCriticalAnswer(item: ChecklistItem) {
+        val current = _uiState.value
+        val updatedAnswers = current.answers.toMutableMap().apply { put(item.id, true) }
+        val updatedFindings = current.sessionFindings.filterNot { it.itemId == item.id }
+        val updatedModules = updateModuleSnapshot(
+            modules = current.sessionModules,
+            moduleTitle = current.currentModuleTitle,
+            item = item,
+            answer = true,
+            naAnswers = current.naAnswers
+        )
+        val score = calculateScore(current.currentChecklist, updatedAnswers, current.naAnswers)
+        val flags = deriveSessionFlags(
+            items = current.currentChecklist,
+            answers = updatedAnswers,
+            naAnswers = current.naAnswers,
+            findings = updatedFindings,
+            modules = updatedModules
+        )
+        _uiState.update {
+            it.copy(
+                answers = updatedAnswers,
+                overallComplianceScore = score,
+                sessionFindings = updatedFindings,
+                sessionModules = updatedModules,
+                criticalStopTriggered = flags.criticalStop,
+                reinspectionDue = flags.reinspectionDue
+            )
+        }
+
+        val incidenceId = persistedIncidenceIds[item.id] ?: return
+        viewModelScope.launch {
+            try {
+                repository.saveIncidence(
+                    Incidence(
+                        id = incidenceId,
+                        inspectionId = activeInspectionId,
+                        checklistItemId = item.id,
+                        status = IncidenceStatus.CLOSED,
+                        timestamp = System.currentTimeMillis(),
+                        latitude = null,
+                        longitude = null,
+                        photoUri = null,
+                        notes = "Respuesta corregida a conforme"
+                    )
+                )
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Error corrigiendo incidencia: ${e.message}") }
+            }
+        }
+    }
+
+    /**
+     * Recomputes a recorded module snapshot after one of its points changes, so the
+     * consolidated zone score and the module's own stop flags stay coherent.
+     */
+    private fun updateModuleSnapshot(
+        modules: List<ModuleCompletion>,
+        moduleTitle: String?,
+        item: ChecklistItem,
+        answer: Boolean,
+        naAnswers: Set<String>
+    ): List<ModuleCompletion> = modules.map { module ->
+        if (moduleTitle == null || module.moduleTitle != moduleTitle) return@map module
+        if (module.items.none { it.id == item.id }) return@map module
+        val answers = module.answers.toMutableMap().apply { put(item.id, answer) }
+        val score = calculateScore(module.items, answers, naAnswers)
+        val low = module.completed && score < REINSPECTION_THRESHOLD
+        module.copy(
+            answers = answers,
+            naAnswers = naAnswers,
+            score = score,
+            criticalStop = low,
+            reinspectionDue = low
+        )
     }
 
     fun markNA(itemId: String, isNA: Boolean) {
@@ -465,8 +693,8 @@ class InspectionViewModel(
     fun snapshotActiveModule(moduleTitle: String, items: List<ChecklistItem>, completed: Boolean) {
         val s = _uiState.value
         if (items.isEmpty() || (s.answers.isEmpty() && !completed)) return
-        val score = calculateScore(items, s.answers)
-        val critical = completed && score < REINSPECTION_THRESHOLD
+        val score = calculateScore(items, s.answers, s.naAnswers)
+        val low = completed && score < REINSPECTION_THRESHOLD
         val snapshot = ModuleCompletion(
             moduleTitle = moduleTitle,
             normCodes = items.map { it.normativ.code }.distinct(),
@@ -474,16 +702,24 @@ class InspectionViewModel(
             answers = s.answers,
             naAnswers = s.naAnswers,
             score = score,
-            criticalStop = critical,
-            reinspectionDue = critical,
+            criticalStop = low,
+            reinspectionDue = low,
             completed = completed
         )
+        val updatedModules = s.sessionModules.filterNot { it.moduleTitle == moduleTitle } + snapshot
+        val flags = deriveSessionFlags(
+            items = items,
+            answers = s.answers,
+            naAnswers = s.naAnswers,
+            findings = s.sessionFindings,
+            modules = updatedModules
+        )
         _uiState.update { current ->
-            val existing = current.sessionModules.filterNot { it.moduleTitle == moduleTitle }
             current.copy(
-                sessionModules = existing + snapshot,
-                criticalStopTriggered = current.criticalStopTriggered || critical,
-                reinspectionDue = current.reinspectionDue || critical
+                sessionModules = updatedModules,
+                currentModuleTitle = moduleTitle,
+                criticalStopTriggered = flags.criticalStop,
+                reinspectionDue = flags.reinspectionDue
             )
         }
     }
@@ -500,9 +736,13 @@ class InspectionViewModel(
                 naAnswers = emptySet(),
                 overallComplianceScore = 0,
                 criticalStopTriggered = false,
+                criticalStopAcknowledged = false,
+                currentModuleTitle = null,
                 reinspectionDue = false,
                 sessionModules = emptyList(),
                 sessionFindings = emptyList(),
+                parentInspectionId = null,
+                parentInspectionFolio = null,
                 errorMessage = null
             )
         }
@@ -515,7 +755,8 @@ class InspectionViewModel(
 
     fun computedSessionScore(): Int {
         val s = _uiState.value
-        return if (s.sessionModules.isEmpty()) s.overallComplianceScore else sessionScore(s.sessionModules)
+        val completed = s.sessionModules.filter { it.completed }
+        return if (completed.isEmpty()) s.overallComplianceScore else consolidatedScore(completed)
     }
 
     fun isReinspectionDue(score: Int): Boolean {
@@ -530,14 +771,16 @@ class InspectionViewModel(
     fun saveDictamen(): InspectionSessionRecord {
         val s = _uiState.value
         val user = s.currentUser
-        val score = if (s.sessionModules.isEmpty()) s.overallComplianceScore else sessionScore(s.sessionModules)
+        val completedModules = s.sessionModules.filter { it.completed }
+        val score = if (completedModules.isEmpty()) s.overallComplianceScore else consolidatedScore(completedModules)
         val locatedFinding = s.sessionFindings.lastOrNull { it.latitude != null && it.longitude != null }
-        val reinspectionDue = s.sessionModules.any { it.reinspectionDue } || score < REINSPECTION_THRESHOLD
-        val criticalStop = s.sessionModules.any { it.criticalStop } || s.criticalStopTriggered
+        val reinspectionDue = s.reinspectionDue || score < REINSPECTION_THRESHOLD
+        val criticalStop = s.criticalStopTriggered || score < REINSPECTION_THRESHOLD
 
         val record = InspectionSessionRecord(
             folio = generateFolio(s.savedInspections),
             inspectionId = activeInspectionId,
+            parentInspectionId = s.parentInspectionId,
             userEmail = user?.email ?: "",
             companyName = s.companyName,
             zoneName = s.zoneName,
@@ -559,15 +802,44 @@ class InspectionViewModel(
             ownerUid = user?.uid.orEmpty()
         )
 
+        // A reinspection resolves the dictamen it re-evaluates: passing closes it,
+        // failing keeps it critical but marks the pending reinspection as attended.
+        val parent = s.parentInspectionId
+            ?.let { id -> s.savedInspections.firstOrNull { it.inspectionId == id } }
+        val updatedParent = parent?.let { previous ->
+            if (!criticalStop && !reinspectionDue) {
+                previous.copy(
+                    status = IncidenceStatus.CLOSED,
+                    criticalStop = false,
+                    reinspectionDue = false,
+                    scheduledReinspectionAt = null,
+                    updatedAt = System.currentTimeMillis()
+                )
+            } else {
+                // A failed reinspection returns the dictamen to the critical state so it
+                // can be marked critical again (and re-evaluated later).
+                previous.copy(
+                    status = IncidenceStatus.OPEN,
+                    reinspectionDue = false,
+                    scheduledReinspectionAt = null,
+                    updatedAt = System.currentTimeMillis()
+                )
+            }
+        }
+
         // Update UI state immediately for responsive UI and test consistency
         _uiState.update {
-            it.copy(savedInspections = it.savedInspections.filterNot { r -> r.folio == record.folio } + record)
+            val records = it.savedInspections
+                .filterNot { r -> r.folio == record.folio }
+                .map { r -> if (updatedParent != null && r.inspectionId == updatedParent.inspectionId) updatedParent else r }
+            it.copy(savedInspections = records + record)
         }
 
         // Persist to Room
         viewModelScope.launch {
             try {
                 repository.saveInspection(record)
+                updatedParent?.let { repository.updateInspection(it) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "Error guardando inspección: ${e.message}") }
             }
@@ -607,12 +879,71 @@ class InspectionViewModel(
         return "AUD-$year-${sequence.toString().padStart(4, '0')}"
     }
 
-    internal fun calculateScore(items: List<ChecklistItem>, answers: Map<String, Boolean>): Int {
-        if (items.isEmpty()) return 100
-        val totalPoints = items.sumOf { it.criticalityLevel.points }
+    /**
+     * Weighted compliance over the applicable points only: N/A answers are removed from
+     * both numerator and denominator, so "no aplica" never lowers the zone score.
+     */
+    internal fun calculateScore(
+        items: List<ChecklistItem>,
+        answers: Map<String, Boolean>,
+        naAnswers: Set<String> = emptySet()
+    ): Int {
+        val applicable = items.filterNot { it.id in naAnswers }
+        if (applicable.isEmpty()) return 100
+        val totalPoints = applicable.sumOf { it.criticalityLevel.points }
         if (totalPoints == 0) return 100
-        val earnedPoints = items.filter { answers[it.id] == true }.sumOf { it.criticalityLevel.points }
+        val earnedPoints = applicable.filter { answers[it.id] == true }.sumOf { it.criticalityLevel.points }
         return ((earnedPoints.toDouble() / totalPoints.toDouble()) * 100).toInt()
+    }
+
+    /**
+     * Consolidated (zone-level) compliance across completed modules. Weighted by each
+     * point's criticality, excluding N/A answers, because the 85% rule applies to the
+     * whole inspected zone and not only to one module at a time.
+     */
+    fun consolidatedScore(modules: List<ModuleCompletion>): Int {
+        val applicable = modules.flatMap { module ->
+            module.items.filterNot { it.id in module.naAnswers }.map { item -> item to module }
+        }
+        if (applicable.isEmpty()) return 100
+        val totalPoints = applicable.sumOf { (item, _) -> item.criticalityLevel.points }
+        if (totalPoints == 0) return 100
+        val earnedPoints = applicable
+            .filter { (item, module) -> module.answers[item.id] == true }
+            .sumOf { (item, _) -> item.criticalityLevel.points }
+        return ((earnedPoints.toDouble() / totalPoints.toDouble()) * 100).toInt()
+    }
+
+    private data class SessionFlags(val criticalStop: Boolean, val reinspectionDue: Boolean)
+
+    /**
+     * Single source of truth for the two session flags:
+     *
+     * - critical stop: any live HIGH finding, any module that closed below 85, the
+     *   consolidated zone score below 85, or a fully answered module below 85;
+     * - reinspection: any module below 85, the consolidated zone below 85, or a fully
+     *   answered module below 85 (no longer waits for "Finalizar Módulo").
+     */
+    private fun deriveSessionFlags(
+        items: List<ChecklistItem>,
+        answers: Map<String, Boolean>,
+        naAnswers: Set<String>,
+        findings: List<SessionFinding>,
+        modules: List<ModuleCompletion>
+    ): SessionFlags {
+        val liveCritical = findings.any { !it.isNA && it.criticalityLevel == CriticalityLevel.HIGH }
+        val moduleCritical = modules.any { it.criticalStop }
+        val moduleReinspection = modules.any { it.reinspectionDue }
+        val completedModules = modules.filter { it.completed }
+        val zoneLow = completedModules.isNotEmpty() &&
+            consolidatedScore(completedModules) < REINSPECTION_THRESHOLD
+        val applicable = items.filterNot { it.id in naAnswers }
+        val moduleComplete = applicable.isNotEmpty() && applicable.all { answers.containsKey(it.id) }
+        val moduleLow = moduleComplete && calculateScore(items, answers, naAnswers) < REINSPECTION_THRESHOLD
+        return SessionFlags(
+            criticalStop = liveCritical || moduleCritical || zoneLow || moduleLow,
+            reinspectionDue = moduleReinspection || zoneLow || moduleLow
+        )
     }
 
     companion object {

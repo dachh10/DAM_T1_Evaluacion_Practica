@@ -4,6 +4,7 @@ import com.example.dam_t1_evaluacion_practica.domain.error.AuthError
 import com.example.dam_t1_evaluacion_practica.domain.error.AuthException
 import com.example.dam_t1_evaluacion_practica.domain.model.AuthSession
 import com.google.android.gms.tasks.Task
+import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
@@ -84,6 +85,10 @@ class FirebaseAuthDataSource(
             awaitTask(task)
         } catch (cancellation: CancellationException) {
             throw cancellation
+        } catch (network: FirebaseNetworkException) {
+            // FirebaseNetworkException extends FirebaseException, not FirebaseAuthException;
+            // without this branch it would fall through to UNKNOWN and hide the real cause.
+            throw AuthException(AuthError.NETWORK_UNAVAILABLE)
         } catch (authError: FirebaseAuthException) {
             throw AuthException(AuthErrorMapper.fromErrorCode(authError.errorCode))
         } catch (throwable: Throwable) {
